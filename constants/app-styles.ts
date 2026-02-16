@@ -17,6 +17,11 @@ export const appStyles = StyleSheet.create({
   stack: {
     gap: 8,
   },
+  button:{
+    fontSize: 20,
+    textDecorationLine: 'underline',
+    color: '#fff',
+  },
   title: {
     fontSize: 20,
     fontWeight: 'bold',

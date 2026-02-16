@@ -3,7 +3,7 @@ import { SolanaCluster } from '@wallet-ui/react-native-web3js'
 
 export class AppConfig {
   static name = 'stride'
-  static uri = 'https://example.com'
+  static uri = 'https://stride.com'
   static networks: SolanaCluster[] = [
     {
       id: 'solana:devnet',
