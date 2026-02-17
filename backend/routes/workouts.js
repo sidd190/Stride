@@ -29,12 +29,15 @@ router.post("/", async (req, res) => {
     }
 
     const points = Math.floor(duration / 60 + distance * 10);
+    
+    // Convert distance to meters (integer) for storage
+    const distanceMeters = Math.round(distance * 1000);
 
     const result = await pool.query(
       `INSERT INTO workouts(wallet_address, duration, distance, created_at) 
        VALUES($1, $2, $3, NOW()) 
        RETURNING workout_id`,
-      [wallet, duration, distance]
+      [wallet, duration, distanceMeters]
     );
 
     await pool.query(
@@ -65,9 +68,9 @@ router.get("/:wallet", async (req, res) => {
       `SELECT 
         workout_id as id, 
         duration, 
-        distance, 
+        distance / 1000.0 as distance,
         created_at as completed_at,
-        FLOOR(duration / 60 + distance * 10) as points
+        FLOOR(duration / 60 + (distance / 1000.0) * 10) as points
        FROM workouts 
        WHERE wallet_address = $1 
        ORDER BY created_at DESC 

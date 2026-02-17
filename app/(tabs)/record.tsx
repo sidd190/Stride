@@ -1,13 +1,16 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { Text, View, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import * as Location from 'expo-location'
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps'
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps'
 import { useMobileWallet } from '@wallet-ui/react-native-web3js'
 import { saveWorkout } from '@/services/api'
 
+const __DEV__ = process.env.NODE_ENV === 'development'
+
 export default function Record() {
   const { account } = useMobileWallet()
+  const mapRef = useRef<MapView>(null)
   const [timer, setTimer] = useState(0)
   const [running, setRunning] = useState(false)
   const [workoutStarted, setWorkoutStarted] = useState(false)
@@ -18,24 +21,24 @@ export default function Record() {
   const [lastPosition, setLastPosition] = useState<{ latitude: number; longitude: number } | null>(null)
   const [locationSubscription, setLocationSubscription] = useState<Location.LocationSubscription | null>(null)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
+  const [routeCoordinates, setRouteCoordinates] = useState<{ latitude: number; longitude: number }[]>([])
+  const [isTestMode, setIsTestMode] = useState(false)
 
-  useEffect(()=>{
-    async function getCurrentLocation(){
-      let {status} = await Location.requestForegroundPermissionsAsync();
-      if(status !== 'granted'){
-        setErrorMsg("Permission to access location was denied");
-        return;
+  useEffect(() => {
+    async function getCurrentLocation() {
+      let { status } = await Location.requestForegroundPermissionsAsync()
+      if (status !== 'granted') {
+        setErrorMsg('Permission to access location was denied')
+        return
       }
 
-      let location = await Location.getCurrentPositionAsync({accuracy:1});
-      if(!location) return null;
-      setLocation(location);
+      let location = await Location.getCurrentPositionAsync({ accuracy: 1 })
+      if (!location) return null
+      setLocation(location)
     }
 
-    getCurrentLocation();
-  },[]);
+    getCurrentLocation()
+  }, [])
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | null = null
@@ -66,21 +69,26 @@ export default function Record() {
           (newLocation) => {
             setLocation(newLocation)
 
+            const newCoord = {
+              latitude: newLocation.coords.latitude,
+              longitude: newLocation.coords.longitude,
+            }
+
+            // Add to route coordinates
+            setRouteCoordinates((prev) => [...prev, newCoord])
+
             if (lastPosition) {
               const distanceDelta = calculateDistance(
                 lastPosition.latitude,
                 lastPosition.longitude,
-                newLocation.coords.latitude,
-                newLocation.coords.longitude
+                newCoord.latitude,
+                newCoord.longitude,
               )
               setDistance((prev) => prev + distanceDelta)
             }
 
-            setLastPosition({
-              latitude: newLocation.coords.latitude,
-              longitude: newLocation.coords.longitude,
-            })
-          }
+            setLastPosition(newCoord)
+          },
         )
         setLocationSubscription(subscription)
       }
@@ -105,19 +113,17 @@ export default function Record() {
     const Δφ = ((lat2 - lat1) * Math.PI) / 180
     const Δλ = ((lon2 - lon1) * Math.PI) / 180
 
-    const a =
-      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2)
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2)
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 
     return R * c // Distance in meters
   }
 
-  let text = 'Waiting...';
+  let text = 'Waiting...'
   if (errorMsg) {
-    text = errorMsg;
+    text = errorMsg
   } else if (location) {
-    text = JSON.stringify(location);
+    text = JSON.stringify(location)
   }
 
   const formatTime = (seconds: number) => {
@@ -131,13 +137,66 @@ export default function Record() {
     setWorkoutStarted(true)
     setRunning(true)
     setWorkoutFinished(false)
+    setIsTestMode(false)
+    setRouteCoordinates([])
     // Set initial position when starting
     if (location) {
-      setLastPosition({
+      const initialCoord = {
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
-      })
+      }
+      setLastPosition(initialCoord)
+      setRouteCoordinates([initialCoord])
     }
+  }
+
+  // Test mode - simulate a workout
+  const handleTestWorkout = () => {
+    setIsTestMode(true)
+    setWorkoutStarted(true)
+    setWorkoutFinished(false)
+
+    // Generate fake route (simulate 2km run in a loop)
+    const startLat = location?.coords.latitude || 28.6139
+    const startLng = location?.coords.longitude || 77.209
+
+    const fakeRoute: { latitude: number; longitude: number }[] = []
+    const numPoints = 80
+    const radius = 0.01 // roughly 1km radius
+
+    for (let i = 0; i < numPoints; i++) {
+      const angle = (i / numPoints) * 2 * Math.PI
+      const lat = startLat + radius * Math.cos(angle) + (Math.random() - 0.5) * 0.001
+      const lng = startLng + radius * Math.sin(angle) + (Math.random() - 0.5) * 0.001
+      fakeRoute.push({ latitude: lat, longitude: lng })
+    }
+
+    setRouteCoordinates(fakeRoute)
+
+    // Calculate fake distance
+    let totalDistance = 0
+    for (let i = 1; i < fakeRoute.length; i++) {
+      totalDistance += calculateDistance(
+        fakeRoute[i - 1].latitude,
+        fakeRoute[i - 1].longitude,
+        fakeRoute[i].latitude,
+        fakeRoute[i].longitude,
+      )
+    }
+
+    setDistance(totalDistance)
+    setTimer(720) // 12 minutes
+    setWorkoutFinished(true)
+
+    // Fit map to route
+    setTimeout(() => {
+      if (mapRef.current && fakeRoute.length > 0) {
+        mapRef.current.fitToCoordinates(fakeRoute, {
+          edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
+          animated: true,
+        })
+      }
+    }, 500)
   }
 
   const handlePause = () => {
@@ -156,6 +215,16 @@ export default function Record() {
       locationSubscription.remove()
       setLocationSubscription(null)
     }
+
+    // Fit map to show full route
+    if (mapRef.current && routeCoordinates.length > 1) {
+      setTimeout(() => {
+        mapRef.current?.fitToCoordinates(routeCoordinates, {
+          edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
+          animated: true,
+        })
+      }, 300)
+    }
   }
 
   const handleReset = () => {
@@ -165,6 +234,8 @@ export default function Record() {
     setWorkoutFinished(false)
     setDistance(0)
     setLastPosition(null)
+    setRouteCoordinates([])
+    setIsTestMode(false)
     if (locationSubscription) {
       locationSubscription.remove()
       setLocationSubscription(null)
@@ -198,14 +269,14 @@ export default function Record() {
             text: 'OK',
             onPress: handleReset,
           },
-        ]
+        ],
       )
     } catch (error: any) {
       console.error('Failed to save workout:', error)
-      
+
       // Show specific error message from backend
       const errorMessage = error.message || 'Failed to save workout. Please try again.'
-      
+
       Alert.alert('Save Failed', errorMessage, [{ text: 'OK' }])
     } finally {
       setSaving(false)
@@ -226,32 +297,62 @@ export default function Record() {
     <SafeAreaView style={styles.container} edges={[]}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} bounces={false}>
         <Text style={styles.title}>Track Workout</Text>
-        
-        <View style={styles.mapContainer}>
-          <MapView 
-            style={styles.map} 
-            provider={PROVIDER_GOOGLE} 
+
+        <View style={[styles.mapContainer, workoutFinished && styles.mapContainerLarge]}>
+          <MapView
+            ref={mapRef}
+            style={styles.map}
+            provider={PROVIDER_GOOGLE}
             initialRegion={{
-              longitude: location?.coords.longitude ?? 77.2090,
+              longitude: location?.coords.longitude ?? 77.209,
               latitude: location?.coords.latitude ?? 28.6139,
               latitudeDelta: 0.01,
               longitudeDelta: 0.01,
             }}
-            showsUserLocation={true}
-            showsMyLocationButton={true}
+            showsUserLocation={!workoutFinished}
+            showsMyLocationButton={!workoutFinished}
           >
-            {location && (
-              <Marker
-                coordinate={{
-                  latitude: location.coords.latitude,
-                  longitude: location.coords.longitude,
-                }}
-                title="Your Location"
-                description="You are here"
-                pinColor="#10b981"
-              />
+            {/* Draw the route */}
+            {routeCoordinates.length > 1 && (
+              <>
+                {/* Shadow/border effect */}
+                <Polyline
+                  coordinates={routeCoordinates}
+                  strokeColor="#611d72ff"
+                  strokeWidth={8}
+                  lineJoin="round"
+                  lineCap="round"
+                />
+                {/* Main route line */}
+                <Polyline
+                  coordinates={routeCoordinates}
+                  strokeColor="#8c00ffff"
+                  strokeWidth={5}
+                  lineJoin="round"
+                  lineCap="round"
+                />
+              </>
+            )}
+
+            {/* Start marker */}
+            {routeCoordinates.length > 0 && (
+              <Marker coordinate={routeCoordinates[0]} title="Start" pinColor="#10b981" />
+            )}
+
+            {/* End marker */}
+            {workoutFinished && routeCoordinates.length > 1 && (
+              <Marker coordinate={routeCoordinates[routeCoordinates.length - 1]} title="Finish" pinColor="#ef4444" />
             )}
           </MapView>
+
+          {/* Stats overlay on map when finished */}
+          {workoutFinished && (
+            <View style={styles.mapStatsOverlay}>
+              <Text style={styles.mapStatsText}>
+                {formatTime(timer)} • {(distance / 1000).toFixed(2)}km
+              </Text>
+            </View>
+          )}
         </View>
 
         {!workoutStarted ? (
@@ -261,6 +362,12 @@ export default function Record() {
             <TouchableOpacity style={styles.startButton} onPress={handleStart}>
               <Text style={styles.startButtonText}>Start Workout</Text>
             </TouchableOpacity>
+
+            {__DEV__ && (
+              <TouchableOpacity style={styles.testButton} onPress={handleTestWorkout}>
+                <Text style={styles.testButtonText}>🧪 Test Workout (Dev Only)</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : (
           <View style={styles.workoutContainer}>
@@ -310,21 +417,15 @@ export default function Record() {
                   <Text style={styles.summaryText}>Pace: {calculatePace()} min/km</Text>
                 </View>
 
-                <TouchableOpacity 
-                  style={[styles.completeButton, saving && styles.buttonDisabled]} 
+                <TouchableOpacity
+                  style={[styles.completeButton, saving && styles.buttonDisabled]}
                   onPress={handleCompleteWorkout}
                   disabled={saving}
                 >
-                  <Text style={styles.completeButtonText}>
-                    {saving ? 'Saving...' : 'Complete Workout'}
-                  </Text>
+                  <Text style={styles.completeButtonText}>{saving ? 'Saving...' : 'Complete Workout'}</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity 
-                  style={styles.resetButton} 
-                  onPress={handleReset}
-                  disabled={saving}
-                >
+                <TouchableOpacity style={styles.resetButton} onPress={handleReset} disabled={saving}>
                   <Text style={styles.resetButtonText}>Discard</Text>
                 </TouchableOpacity>
               </View>
@@ -347,6 +448,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: 'hidden',
     marginBottom: 20,
+  },
+  mapContainerLarge: {
+    height: 400,
   },
   map: {
     width: '100%',
@@ -394,6 +498,33 @@ const styles = StyleSheet.create({
   startButtonText: {
     color: '#fff',
     fontSize: 18,
+    fontWeight: 'bold',
+  },
+  testButton: {
+    marginTop: 15,
+    backgroundColor: '#6b7280',
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+    borderRadius: 8,
+  },
+  testButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  mapStatsOverlay: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    right: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  mapStatsText: {
+    color: '#fff',
+    fontSize: 16,
     fontWeight: 'bold',
   },
   workoutContainer: {
