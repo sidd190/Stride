@@ -1,26 +1,27 @@
-import { NetworkFeatureIndex } from '@/features/network/network-feature-index'
-import { AccountFeatureIndex } from '@/features/account/account-feature-index'
-import { AppConfig } from '@/constants/app-config'
 import { Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import React from 'react'
+import React, { useEffect } from 'react'
 import { appStyles } from '@/constants/app-styles'
+import { useMobileWallet } from '@wallet-ui/react-native-web3js'
+import { AccountFeatureConnect } from '@/features/account/account-feature-connect'
+import { useRouter } from 'expo-router'
 
-export default function HomeScreen() {
+export default function WalletConnectScreen() {
+  const { account } = useMobileWallet()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (account) {
+      router.replace('/(tabs)/home')
+    }
+  }, [account])
+
   return (
     <SafeAreaView style={appStyles.screen}>
       <View style={appStyles.stack}>
-        <Text style={appStyles.title}>App Config</Text>
-        <View style={appStyles.card}>
-          <Text>
-            Name <Text style={{ fontWeight: 'bold' }}>{AppConfig.name}</Text>
-          </Text>
-          <Text>
-            URL <Text style={{ fontWeight: 'bold' }}>{AppConfig.uri}</Text>
-          </Text>
-        </View>
-        <AccountFeatureIndex />
-        <NetworkFeatureIndex />
+        <Text style={appStyles.title}>Welcome to Stride</Text>
+        <Text style={{ textAlign: 'center', marginBottom: 20 }}>Connect your wallet to get started</Text>
+        <AccountFeatureConnect />
       </View>
     </SafeAreaView>
   )

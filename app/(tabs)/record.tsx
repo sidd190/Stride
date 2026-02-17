@@ -1,14 +1,14 @@
 import React from 'react'
 import { Text, View } from 'react-native'
 
-function profile() {
+function record() {
   return (
     <View>
       <Text>
-        profile
+        record
       </Text>
     </View>
   )
 }
 
-export default profile
+export default record

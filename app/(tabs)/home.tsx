@@ -1,10 +1,24 @@
 import React from 'react'
-import { View } from 'react-native'
+import { View, Text } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { appStyles } from '@/constants/app-styles'
+import { useMobileWallet } from '@wallet-ui/react-native-web3js'
+import { ellipsify } from '@/utils/ellipsify'
 
-function home() {
+export default function Home() {
+  const { account } = useMobileWallet()
+
   return (
-    <View>home</View>
+    <SafeAreaView style={appStyles.screen}>
+      <View style={appStyles.stack}>
+        <Text style={appStyles.title}>Home</Text>
+        {account && (
+          <View style={appStyles.card}>
+            <Text>Connected: {ellipsify(account.address.toString(), 8)}</Text>
+          </View>
+        )}
+        <Text>Welcome to Stride!</Text>
+      </View>
+    </SafeAreaView>
   )
 }
-
-export default home
