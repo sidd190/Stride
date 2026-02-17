@@ -3,13 +3,16 @@ import { PropsWithChildren } from 'react'
 import { NetworkProvider } from '@/features/network/network-provider'
 import { MobileWalletProvider } from '@wallet-ui/react-native-web3js'
 import { useNetwork } from '@/features/network/use-network'
+import { AuthProvider } from '@/hooks/useAuth'
 
 const queryClient = new QueryClient()
 export function AppProviders({ children }: PropsWithChildren) {
   return (
     <QueryClientProvider client={queryClient}>
       <NetworkProvider>
-        <SolanaNetworkProvider>{children}</SolanaNetworkProvider>
+        <SolanaNetworkProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </SolanaNetworkProvider>
       </NetworkProvider>
     </QueryClientProvider>
   )

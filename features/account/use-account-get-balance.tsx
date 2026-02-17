@@ -6,6 +6,18 @@ export function useAccountGetBalance({ address }: { address: PublicKey }) {
   const { chain, connection } = useMobileWallet()
   return useQuery({
     queryKey: ['get-balance', chain, address.toString()],
-    queryFn: () => connection.getBalance(address),
+    queryFn: async () => {
+      try {
+        // Convert to proper PublicKey if needed
+        const pubkey = typeof address === 'string' ? new PublicKey(address) : address
+        const balance = await connection.getBalance(pubkey)
+        return balance
+      } catch (error) {
+        console.error('Balance fetch error:', error)
+        throw error
+      }
+    },
+    retry: 2,
+    staleTime: 30000, // 30 seconds
   })
 }
