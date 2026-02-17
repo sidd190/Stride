@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react'
-import { Text, View, TextInput, Button, StyleSheet, Alert } from 'react-native'
+import { Text, View, TextInput, Button, StyleSheet, Alert, ScrollView, TouchableOpacity } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useMobileWallet } from '@wallet-ui/react-native-web3js'
-import { getProfile, createProfile, deleteProfile } from '@/services/api'
+import { getProfile, createProfile, deleteProfile, getWorkoutHistory } from '@/services/api'
 import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'expo-router'
 import { AccountFeatureGetBalance } from '@/features/account/account-feature-get-balance'
@@ -29,6 +29,7 @@ export default function Profile() {
   const { networks, selectedNetwork, setSelectedNetwork } = useNetwork()
   const router = useRouter()
   const [profile, setProfile] = useState<any>(null)
+  const [workouts, setWorkouts] = useState<any[]>([])
   const [username, setUsername] = useState('')
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
@@ -36,6 +37,7 @@ export default function Profile() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [showNetworkSelect, setShowNetworkSelect] = useState(false)
+  const [showWorkouts, setShowWorkouts] = useState(false)
 
   useEffect(() => {
     if (account) {
@@ -53,7 +55,7 @@ export default function Profile() {
       // Try to load from cache first
       const cacheKey = PROFILE_CACHE_KEY + account.address.toString()
       const cached = await AsyncStorage.getItem(cacheKey)
-      
+
       if (cached) {
         setProfile(JSON.parse(cached))
         setLoading(false)
@@ -61,11 +63,19 @@ export default function Profile() {
 
       // Then fetch from backend in background
       const data = await getProfile(account.address.toString())
-      
+
       if (data) {
         setProfile(data)
         // Update cache
         await AsyncStorage.setItem(cacheKey, JSON.stringify(data))
+
+        // Load workout history
+        try {
+          const workoutData = await getWorkoutHistory(account.address.toString())
+          setWorkouts(workoutData)
+        } catch (err) {
+          console.error('Failed to load workouts:', err)
+        }
       } else {
         // No profile exists - this is normal for new users
         setProfile(null)
@@ -96,14 +106,14 @@ export default function Profile() {
       setCreating(true)
       setError(null)
       setSuccess(null)
-      
+
       const newProfile = {
         wallet: account!.address.toString(),
         username: username.trim(),
       }
 
       await createProfile(newProfile)
-      
+
       // Update cache immediately
       const cacheKey = PROFILE_CACHE_KEY + account!.address.toString()
       const profileData = {
@@ -111,7 +121,7 @@ export default function Profile() {
         username: newProfile.username,
       }
       await AsyncStorage.setItem(cacheKey, JSON.stringify(profileData))
-      
+
       setProfile(profileData)
       setSuccess('Profile created successfully!')
       setUsername('')
@@ -124,18 +134,14 @@ export default function Profile() {
   }
 
   const handleDeleteProfile = () => {
-    Alert.alert(
-      'Delete Profile',
-      'Are you sure you want to delete your profile? This action cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: confirmDeleteProfile,
-        },
-      ]
-    )
+    Alert.alert('Delete Profile', 'Are you sure you want to delete your profile? This action cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: confirmDeleteProfile,
+      },
+    ])
   }
 
   const confirmDeleteProfile = async () => {
@@ -143,13 +149,13 @@ export default function Profile() {
       setDeleting(true)
       setError(null)
       setSuccess(null)
-      
+
       await deleteProfile(account!.address.toString())
-      
+
       // Clear cache
       const cacheKey = PROFILE_CACHE_KEY + account!.address.toString()
       await AsyncStorage.removeItem(cacheKey)
-      
+
       setProfile(null)
       setSuccess('Profile deleted successfully!')
     } catch (err) {
@@ -167,8 +173,8 @@ export default function Profile() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.title}>Profile</Text>
 
         {loading ? (
@@ -177,7 +183,10 @@ export default function Profile() {
           <View style={styles.profileCard}>
             <Text style={styles.label}>Username:</Text>
             <Text style={styles.value}>{profile.username}</Text>
-            
+
+            <Text style={styles.label}>Total Points:</Text>
+            <Text style={styles.value}>{profile.total_points || 0} pts</Text>
+
             <Text style={styles.label}>Wallet Address:</Text>
             <Text style={styles.value} numberOfLines={1} ellipsizeMode="middle">
               {profile.wallet_address}
@@ -193,7 +202,7 @@ export default function Profile() {
               onPress={() => setShowNetworkSelect(!showNetworkSelect)}
               color="#6b7280"
             />
-            
+
             {showNetworkSelect && (
               <View style={styles.networkSelect}>
                 <NetworkUiSelect
@@ -207,6 +216,31 @@ export default function Profile() {
               </View>
             )}
 
+            <View style={styles.workoutHistorySection}>
+              <TouchableOpacity onPress={() => setShowWorkouts(!showWorkouts)}>
+                <Text style={styles.workoutHistoryTitle}>
+                  Workout History ({workouts.length}) {showWorkouts ? '▼' : '▶'}
+                </Text>
+              </TouchableOpacity>
+
+              {showWorkouts && workouts.length > 0 && (
+                <View style={styles.workoutList}>
+                  {workouts.map((workout) => (
+                    <View key={workout.id} style={styles.workoutItem}>
+                      <Text style={styles.workoutDate}>{new Date(workout.completed_at).toLocaleDateString()}</Text>
+                      <Text style={styles.workoutStats}>
+                        {Math.floor(workout.duration / 60)}min • {workout.distance}km • {workout.points}pts
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {showWorkouts && workouts.length === 0 && (
+                <Text style={styles.noWorkouts}>No workouts yet. Start tracking!</Text>
+              )}
+            </View>
+
             <View style={styles.deleteButton}>
               <Button
                 title={deleting ? 'Deleting...' : 'Delete Profile'}
@@ -219,7 +253,7 @@ export default function Profile() {
         ) : (
           <View style={styles.createForm}>
             <Text style={styles.subtitle}>Create Your Profile</Text>
-            
+
             <TextInput
               style={styles.input}
               placeholder="Enter username"
@@ -227,7 +261,7 @@ export default function Profile() {
               onChangeText={setUsername}
               editable={!creating}
             />
-            
+
             <Button
               title={creating ? 'Creating...' : 'Create Profile'}
               onPress={handleCreateProfile}
@@ -247,7 +281,7 @@ export default function Profile() {
         <View style={styles.footer}>
           <Button title="Sign Out" onPress={handleSignOut} color="#dc2626" />
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   )
 }
@@ -257,9 +291,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
-  content: {
+  scrollView: {
     flex: 1,
+  },
+  content: {
     padding: 20,
+    paddingBottom: 40,
   },
   title: {
     fontSize: 28,
@@ -305,6 +342,42 @@ const styles = StyleSheet.create({
     backgroundColor: '#f9fafb',
     borderRadius: 8,
   },
+  workoutHistorySection: {
+    marginTop: 20,
+  },
+  workoutHistoryTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 10,
+  },
+  workoutList: {
+    gap: 8,
+  },
+  workoutItem: {
+    backgroundColor: '#f9fafb',
+    padding: 12,
+    borderRadius: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  workoutDate: {
+    fontSize: 14,
+    color: '#6b7280',
+    fontWeight: '500',
+  },
+  workoutStats: {
+    fontSize: 14,
+    color: '#111827',
+  },
+  noWorkouts: {
+    fontSize: 14,
+    color: '#9ca3af',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: 10,
+  },
   deleteButton: {
     marginTop: 20,
   },
@@ -329,7 +402,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   footer: {
-    marginTop: 'auto',
+    marginTop: 20,
     paddingTop: 20,
   },
 })

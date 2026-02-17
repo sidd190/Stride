@@ -73,3 +73,43 @@ export async function deleteProfile(wallet: string) {
     throw error;
   }
 }
+
+export async function saveWorkout(data: {
+  wallet: string;
+  duration: number;
+  distance: number;
+}) {
+  try {
+    const res = await fetch(`${BASE_URL}/api/workouts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json();
+      throw new Error(errorData.error || "Failed to save workout");
+    }
+
+    return res.json();
+  } catch (error) {
+    console.error("saveWorkout error:", error);
+    throw error;
+  }
+}
+
+export async function getWorkoutHistory(wallet: string) {
+  try {
+    const res = await fetch(`${BASE_URL}/api/workouts/${wallet}`);
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`API Error: ${res.status} - ${text}`);
+    }
+
+    return res.json();
+  } catch (error) {
+    console.error("getWorkoutHistory error:", error);
+    throw error;
+  }
+}
