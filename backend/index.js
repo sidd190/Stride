@@ -7,6 +7,8 @@ import dotenv from 'dotenv'
 import authRoutes from './routes/auth.js'
 import profileRoutes from './routes/profile.js'
 import workoutRoutes from './routes/workouts.js'
+import racesRoutes from './routes/races.js'
+import { pool } from './db.js'
 
 dotenv.config()
 
@@ -25,6 +27,7 @@ app.use(express.json())
 app.use('/api/auth', authRoutes)
 app.use('/api/profile', profileRoutes)
 app.use('/api/workouts', workoutRoutes)
+app.use('/api/races', racesRoutes)
 
 // Race management
 const races = new Map() // raceCode -> race data
@@ -32,6 +35,40 @@ const races = new Map() // raceCode -> race data
 // Generate 6-digit race code
 function generateRaceCode() {
   return Math.random().toString(36).substring(2, 8).toUpperCase()
+}
+
+// Save race to database
+async function saveRaceToDatabase(race) {
+  try {
+    // Insert race record
+    const raceResult = await pool.query(
+      `INSERT INTO races (race_code, target_distance, winner_wallet, total_participants, completed_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       RETURNING id`,
+      [
+        race.code,
+        race.targetDistance,
+        race.participants.find((p) => p.finished)?.wallet || null,
+        race.participants.length,
+      ]
+    )
+
+    const raceId = raceResult.rows[0].id
+
+    // Insert participant records
+    for (let i = 0; i < race.participants.length; i++) {
+      const p = race.participants[i]
+      await pool.query(
+        `INSERT INTO race_participants (race_id, wallet_address, username, distance, finish_time, position, finished)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [raceId, p.wallet, p.username, p.distance, p.finishTime || null, i + 1, p.finished]
+      )
+    }
+
+    console.log(`Race ${race.code} saved to database`)
+  } catch (error) {
+    console.error('Error saving race to database:', error)
+  }
 }
 
 io.on('connection', (socket) => {
@@ -122,7 +159,7 @@ io.on('connection', (socket) => {
     }, 1000)
   })
 
-  socket.on('update_progress', ({ code, distance, pace }) => {
+  socket.on('update_progress', async ({ code, distance, pace }) => {
     const race = races.get(code)
 
     if (!race || race.status !== 'active') return
@@ -159,9 +196,11 @@ io.on('connection', (socket) => {
     // Check if all finished
     if (race.participants.every((p) => p.finished)) {
       race.status = 'finished'
-      io.to(code).emit('race_finished', {
-        results: race.participants.filter((p) => p.finished).sort((a, b) => a.finishTime - b.finishTime),
-      })
+      const results = race.participants.filter((p) => p.finished).sort((a, b) => a.finishTime - b.finishTime)
+      io.to(code).emit('race_finished', { results })
+      
+      // Save race to database
+      await saveRaceToDatabase(race)
     }
   })
 
@@ -180,7 +219,7 @@ io.on('connection', (socket) => {
     }
   })
 
-  socket.on('end_race', ({ code }) => {
+  socket.on('end_race', async ({ code }) => {
     const race = races.get(code)
     if (!race) return
 
@@ -196,6 +235,10 @@ io.on('connection', (socket) => {
     })
 
     io.to(code).emit('race_finished', { results })
+    
+    // Save race to database
+    await saveRaceToDatabase(race)
+    
     console.log(`Race ${code} ended manually`)
   })
 

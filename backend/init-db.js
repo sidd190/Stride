@@ -26,6 +26,35 @@ async function initDatabase() {
       )
     `);
 
+    // Create races table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS races (
+        id SERIAL PRIMARY KEY,
+        race_code VARCHAR(10) NOT NULL,
+        target_distance DECIMAL(10, 2) NOT NULL,
+        winner_wallet VARCHAR(255),
+        total_participants INTEGER NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        completed_at TIMESTAMP
+      )
+    `);
+
+    // Create race_participants table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS race_participants (
+        id SERIAL PRIMARY KEY,
+        race_id INTEGER NOT NULL,
+        wallet_address VARCHAR(255) NOT NULL,
+        username VARCHAR(100) NOT NULL,
+        distance DECIMAL(10, 2) NOT NULL,
+        finish_time INTEGER,
+        position INTEGER,
+        finished BOOLEAN DEFAULT FALSE,
+        FOREIGN KEY (race_id) REFERENCES races(id) ON DELETE CASCADE,
+        FOREIGN KEY (wallet_address) REFERENCES profiles(wallet_address) ON DELETE CASCADE
+      )
+    `);
+
     console.log("Database initialized successfully!");
     process.exit(0);
   } catch (error) {

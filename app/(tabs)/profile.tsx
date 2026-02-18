@@ -30,6 +30,7 @@ export default function Profile() {
   const router = useRouter()
   const [profile, setProfile] = useState<any>(null)
   const [workouts, setWorkouts] = useState<any[]>([])
+  const [races, setRaces] = useState<any[]>([])
   const [username, setUsername] = useState('')
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
@@ -38,6 +39,7 @@ export default function Profile() {
   const [success, setSuccess] = useState<string | null>(null)
   const [showNetworkSelect, setShowNetworkSelect] = useState(false)
   const [showWorkouts, setShowWorkouts] = useState(false)
+  const [showRaces, setShowRaces] = useState(false)
 
   useEffect(() => {
     if (account) {
@@ -75,6 +77,15 @@ export default function Profile() {
           setWorkouts(workoutData)
         } catch (err) {
           console.error('Failed to load workouts:', err)
+        }
+
+        // Load race history
+        try {
+          const response = await fetch(`http://localhost:3000/api/races/history/${account.address.toString()}`)
+          const raceData = await response.json()
+          setRaces(raceData.races || [])
+        } catch (err) {
+          console.error('Failed to load races:', err)
         }
       } else {
         // No profile exists - this is normal for new users
@@ -241,6 +252,44 @@ export default function Profile() {
               )}
             </View>
 
+            <View style={styles.raceHistorySection}>
+              <TouchableOpacity onPress={() => setShowRaces(!showRaces)}>
+                <Text style={styles.raceHistoryTitle}>
+                  Race History ({races.length}) {showRaces ? '▼' : '▶'}
+                </Text>
+              </TouchableOpacity>
+
+              {showRaces && races.length > 0 && (
+                <View style={styles.raceList}>
+                  {races.map((race) => (
+                    <View key={race.id} style={styles.raceItem}>
+                      <View style={styles.raceHeader}>
+                        <Text style={styles.raceCode}>#{race.race_code}</Text>
+                        <Text style={styles.raceDate}>{new Date(race.completed_at).toLocaleDateString()}</Text>
+                      </View>
+                      <Text style={styles.raceStats}>
+                        {race.target_distance}km • {race.total_participants} racers
+                      </Text>
+                      <View style={styles.raceResult}>
+                        <Text style={styles.racePosition}>
+                          {race.position === 1 ? '🥇' : race.position === 2 ? '🥈' : race.position === 3 ? '🥉' : `#${race.position}`}
+                        </Text>
+                        <Text style={styles.raceTime}>
+                          {race.finished && race.finish_time
+                            ? `${Math.floor(race.finish_time / 60000)}:${String(Math.floor((race.finish_time % 60000) / 1000)).padStart(2, '0')}`
+                            : `${race.distance}km (DNF)`}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {showRaces && races.length === 0 && (
+                <Text style={styles.noRaces}>No races yet. Join a race!</Text>
+              )}
+            </View>
+
             <View style={styles.deleteButton}>
               <Button
                 title={deleting ? 'Deleting...' : 'Delete Profile'}
@@ -372,6 +421,64 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   noWorkouts: {
+    fontSize: 14,
+    color: '#9ca3af',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: 10,
+  },
+  raceHistorySection: {
+    marginTop: 20,
+  },
+  raceHistoryTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 10,
+  },
+  raceList: {
+    gap: 8,
+  },
+  raceItem: {
+    backgroundColor: '#f9fafb',
+    padding: 12,
+    borderRadius: 8,
+    gap: 6,
+  },
+  raceHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  raceCode: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#3b82f6',
+  },
+  raceDate: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  raceStats: {
+    fontSize: 13,
+    color: '#6b7280',
+  },
+  raceResult: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  racePosition: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  raceTime: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  noRaces: {
     fontSize: 14,
     color: '#9ca3af',
     fontStyle: 'italic',
