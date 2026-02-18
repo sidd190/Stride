@@ -44,12 +44,12 @@ export default function TabLayout() {
                 }}
             />
             <Tabs.Screen 
-                name="maps" 
+                name="race" 
                 options={{ 
-                    title: "Maps",
+                    title: "Race",
                     tabBarIcon: ({ color, size, focused }) => (
                         <Ionicons 
-                            name={focused ? "map" : "map-outline"} 
+                            name={focused ? "flag" : "flag-outline"} 
                             size={size} 
                             color={color} 
                         />
