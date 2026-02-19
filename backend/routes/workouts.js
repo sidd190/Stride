@@ -1,5 +1,8 @@
 import express from "express";
 import { pool } from "../db.js";
+import { mintWorkoutNFT } from "../services/nftMinter.js";
+import { generateRouteArt } from "../services/routeArtGenerator.js";
+import { isInitialized } from "../config/solana.js";
 
 const router = express.Router();
 
@@ -8,7 +11,7 @@ const MIN_DISTANCE = 0.5;
 
 router.post("/", async (req, res) => {
   try {
-    const { wallet, duration, distance } = req.body;
+    const { wallet, duration, distance, gpsCoordinates } = req.body;
 
     if (!wallet || !duration || distance === undefined) {
       return res.status(400).json({ error: "Missing required fields" });
@@ -29,17 +32,52 @@ router.post("/", async (req, res) => {
     }
 
     const points = Math.floor(duration / 60 + distance * 10);
+    const pace = duration > 0 ? (duration / 60) / distance : 0;
     
     // Convert distance to meters (integer) for storage
     const distanceMeters = Math.round(distance * 1000);
 
+    // Mint NFT if Solana is initialized
+    let nftMintAddress = null;
+    let nftExplorerUrl = null;
+    
+    if (isInitialized()) {
+      try {
+        console.log(' Minting workout NFT...');
+        
+        // Generate route art
+        const routeArt = generateRouteArt(gpsCoordinates || [], {
+          distance,
+          duration,
+          pace,
+        });
+
+        // Mint NFT
+        const nftResult = await mintWorkoutNFT(wallet, {
+          distance,
+          duration,
+          pace,
+        }, routeArt);
+
+        nftMintAddress = nftResult.mintAddress;
+        nftExplorerUrl = nftResult.explorerUrl;
+        
+        console.log('NFT minted:', nftMintAddress);
+      } catch (nftError) {
+        console.error('NFT minting failed (continuing anyway):', nftError.message);
+        // Don't fail the workout if NFT minting fails
+      }
+    }
+
+    // Save workout to database
     const result = await pool.query(
-      `INSERT INTO workouts(wallet_address, duration, distance, completed_at) 
-       VALUES($1, $2, $3, NOW()) 
+      `INSERT INTO workouts(wallet_address, duration, distance, nft_mint_address, gps_coordinates, completed_at) 
+       VALUES($1, $2, $3, $4, $5, NOW()) 
        RETURNING id`,
-      [wallet, duration, distanceMeters]
+      [wallet, duration, distanceMeters, nftMintAddress, JSON.stringify(gpsCoordinates || [])]
     );
 
+    // Update profile points
     await pool.query(
       `UPDATE profiles 
        SET total_points = COALESCE(total_points, 0) + $1 
@@ -61,6 +99,9 @@ router.post("/", async (req, res) => {
       workout: {
         id: result.rows[0].id,
         points: points,
+        nftMinted: !!nftMintAddress,
+        nftMintAddress,
+        nftExplorerUrl,
       },
     });
   } catch (error) {
@@ -77,6 +118,7 @@ router.get("/:wallet", async (req, res) => {
         id, 
         duration, 
         distance / 1000.0 as distance,
+        nft_mint_address,
         completed_at,
         FLOOR(duration / 60 + (distance / 1000.0) * 10) as points
        FROM workouts 

@@ -1,8 +1,12 @@
+import dotenv from 'dotenv'
+
+// Load environment variables FIRST before any other imports
+dotenv.config()
+
 import express from 'express'
 import { createServer } from 'http'
 import { Server } from 'socket.io'
 import cors from 'cors'
-import dotenv from 'dotenv'
 
 import authRoutes from './routes/auth.js'
 import profileRoutes from './routes/profile.js'
@@ -10,8 +14,10 @@ import workoutRoutes from './routes/workouts.js'
 import racesRoutes from './routes/races.js'
 import leaguesRoutes from './routes/leagues.js'
 import { pool } from './db.js'
+import { initializeSolana } from './config/solana.js'
 
-dotenv.config()
+// Initialize Solana connection
+initializeSolana()
 
 const app = express()
 const httpServer = createServer(app)

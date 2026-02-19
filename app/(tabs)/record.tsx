@@ -257,13 +257,19 @@ export default function Record() {
         wallet: account.address.toString(),
         duration: timer,
         distance: distanceKm,
+        gpsCoordinates: routeCoordinates, // Send GPS coordinates for NFT
       }
 
       const result = await saveWorkout(workoutData)
 
+      // Show success message with NFT info
+      const nftMessage = result.workout.nftMinted 
+        ? `\n\n NFT Minted!\nView on Explorer: ${result.workout.nftMintAddress?.slice(0, 8)}...`
+        : '';
+
       Alert.alert(
         'Workout Saved!',
-        `Great job! You earned ${result.workout.points} points!\n\nDuration: ${formatTime(timer)}\nDistance: ${distanceKm.toFixed(2)} km`,
+        `Great job! You earned ${result.workout.points} points!${nftMessage}\n\nDuration: ${formatTime(timer)}\nDistance: ${distanceKm.toFixed(2)} km`,
         [
           {
             text: 'OK',
@@ -365,7 +371,7 @@ export default function Record() {
 
             {__DEV__ && (
               <TouchableOpacity style={styles.testButton} onPress={handleTestWorkout}>
-                <Text style={styles.testButtonText}>🧪 Test Workout (Dev Only)</Text>
+                <Text style={styles.testButtonText}> Test Workout (Dev Only)</Text>
               </TouchableOpacity>
             )}
           </View>

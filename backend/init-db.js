@@ -20,6 +20,8 @@ async function initDatabase() {
         wallet_address VARCHAR(255) NOT NULL,
         duration INTEGER NOT NULL,
         distance DECIMAL(10, 2) NOT NULL,
+        nft_mint_address VARCHAR(255),
+        gps_coordinates TEXT,
         completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (wallet_address) REFERENCES profiles(wallet_address) ON DELETE CASCADE
       )
