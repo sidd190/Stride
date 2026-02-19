@@ -3,6 +3,11 @@ import { Text, View, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, A
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useMobileWallet } from '@wallet-ui/react-native-web3js'
 import { getLeagues, getUserLeagues, getLeaderboard, joinLeague, leaveLeague } from '@/services/api'
+import { Card } from '@/components/ui/Card'
+import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
+import { colors, spacing, typography, surfaces, borderRadius, shadows } from '@/constants/theme'
+import { Ionicons } from '@expo/vector-icons'
 
 interface League {
   id: number
@@ -49,9 +54,7 @@ export default function Leaderboard() {
 
   const loadLeagues = async () => {
     try {
-      console.log('Loading leagues...')
       const data = await getLeagues()
-      console.log('Leagues loaded:', data)
       setLeagues(data.leagues)
       if (data.leagues.length > 0 && !selectedLeague) {
         setSelectedLeague(data.leagues[0])
@@ -66,9 +69,7 @@ export default function Leaderboard() {
   const loadUserLeagues = async () => {
     if (!account) return
     try {
-      console.log('Loading user leagues...')
       const data = await getUserLeagues(account.address.toString())
-      console.log('User leagues loaded:', data)
       setUserLeagues(data.leagues.map((l: League) => l.id))
     } catch (error) {
       console.error('Failed to load user leagues:', error)
@@ -78,13 +79,11 @@ export default function Leaderboard() {
   const loadLeaderboard = async () => {
     if (!selectedLeague) return
     try {
-      console.log('Loading leaderboard for league:', selectedLeague.id)
       const data = await getLeaderboard(selectedLeague.id)
-      console.log('Leaderboard loaded:', data)
       setLeaderboard(data.leaderboard)
     } catch (error) {
       console.error('Failed to load leaderboard:', error)
-      setLeaderboard([]) // Set empty array on error
+      setLeaderboard([])
     }
   }
 
@@ -122,112 +121,142 @@ export default function Leaderboard() {
     return index >= 0 ? index + 1 : null
   }
 
+  const getRankIcon = (index: number) => {
+    if (index === 0) return '🥇'
+    if (index === 1) return '🥈'
+    if (index === 2) return '🥉'
+    return `#${index + 1}`
+  }
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" color="#10b981" style={{ marginTop: 50 }} />
+        <ActivityIndicator size="large" color={colors.primary[500]} style={{ marginTop: 50 }} />
       </SafeAreaView>
     )
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={[]}>
       <ScrollView
         style={styles.scrollView}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary[500]} />
+        }
       >
-        <Text style={styles.title}>Leaderboard</Text>
-
-        <View style={styles.leagueSelector}>
-          <Text style={styles.sectionTitle}>Select League</Text>
+        {/* League Selector */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Leagues</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.leagueScroll}>
-            {leagues.map((league) => (
-              <TouchableOpacity
-                key={league.id}
-                style={[
-                  styles.leagueCard,
-                  selectedLeague?.id === league.id && styles.leagueCardActive,
-                ]}
-                onPress={() => setSelectedLeague(league)}
-              >
-                <Text
-                  style={[
-                    styles.leagueName,
-                    selectedLeague?.id === league.id && styles.leagueNameActive,
-                  ]}
-                >
-                  {league.name}
-                </Text>
-                <Text style={styles.leagueSeason}>{league.season}</Text>
-                <Text style={styles.leagueMembers}>{league.member_count} members</Text>
-                
-                {account && (
-                  <TouchableOpacity
-                    style={[
-                      styles.joinButton,
-                      userLeagues.includes(league.id) && styles.leaveButton,
-                    ]}
-                    onPress={() =>
-                      userLeagues.includes(league.id)
-                        ? handleLeaveLeague(league.id)
-                        : handleJoinLeague(league.id)
-                    }
+            {leagues.map((league) => {
+              const isSelected = selectedLeague?.id === league.id
+              const isMember = userLeagues.includes(league.id)
+
+              return (
+                <TouchableOpacity key={league.id} onPress={() => setSelectedLeague(league)}>
+                  <Card
+                    variant={isSelected ? 'glow' : 'default'}
+                    style={isSelected ? { ...styles.leagueCard, ...styles.leagueCardActive } : styles.leagueCard}
                   >
-                    <Text style={styles.joinButtonText}>
-                      {userLeagues.includes(league.id) ? 'Leave' : 'Join'}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </TouchableOpacity>
-            ))}
+                    <View style={styles.leagueHeader}>
+                      <Text style={styles.leagueName}>{league.name}</Text>
+                      {isMember && <Badge label="JOINED" variant="success" size="sm" />}
+                    </View>
+                    <Text style={styles.leagueSeason}>{league.season}</Text>
+                    <View style={styles.leagueFooter}>
+                      <View style={styles.memberCount}>
+                        <Ionicons name="people" size={14} color={colors.text.tertiary} />
+                        <Text style={styles.memberCountText}>{league.member_count}</Text>
+                      </View>
+                    </View>
+
+                    {account && (
+                      <Button
+                        title={isMember ? 'Leave' : 'Join'}
+                        variant={isMember ? 'outline' : 'primary'}
+                        size="sm"
+                        onPress={() => (isMember ? handleLeaveLeague(league.id) : handleJoinLeague(league.id))}
+                        style={styles.leagueButton}
+                      />
+                    )}
+                  </Card>
+                </TouchableOpacity>
+              )
+            })}
           </ScrollView>
         </View>
 
-        {selectedLeague && (
-          <>
-            {account && getUserRank() && (
-              <View style={styles.userRankCard}>
-                <Text style={styles.userRankLabel}>Your Rank</Text>
+        {/* User Rank Card */}
+        {selectedLeague && account && getUserRank() && (
+          <Card variant="elevated" style={styles.userRankCard}>
+            <View style={styles.userRankContent}>
+              <View>
+                <Text style={styles.userRankLabel}>YOUR RANK</Text>
                 <Text style={styles.userRankValue}>#{getUserRank()}</Text>
               </View>
-            )}
+              <Ionicons name="trophy" size={48} color={colors.gold[500]} />
+            </View>
+          </Card>
+        )}
 
-            <View style={styles.leaderboardContainer}>
-              <Text style={styles.sectionTitle}>Top Runners</Text>
-              {leaderboard.length === 0 ? (
-                <Text style={styles.emptyText}>No runners yet. Be the first to join!</Text>
-              ) : (
-                leaderboard.map((entry, index) => (
-                  <View
+        {/* Leaderboard */}
+        {selectedLeague && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Top Competitors</Text>
+            {leaderboard.length === 0 ? (
+              <Card style={styles.emptyCard}>
+                <Ionicons name="trophy-outline" size={48} color={colors.text.tertiary} />
+                <Text style={styles.emptyText}>No competitors yet</Text>
+                <Text style={styles.emptySubtext}>Be the first to join and compete!</Text>
+              </Card>
+            ) : (
+              leaderboard.map((entry, index) => {
+                const isCurrentUser = account?.address.toString() === entry.wallet_address
+
+                return (
+                  <Card
                     key={entry.wallet_address}
-                    style={[
-                      styles.leaderboardItem,
-                      account?.address.toString() === entry.wallet_address && styles.leaderboardItemHighlight,
-                    ]}
+                    variant={isCurrentUser ? 'glow' : 'default'}
+                    style={
+                      isCurrentUser
+                        ? { ...styles.leaderboardItem, ...styles.leaderboardItemHighlight }
+                        : styles.leaderboardItem
+                    }
                   >
-                    <View style={styles.rankBadge}>
-                      <Text style={styles.rankText}>
-                        {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
-                      </Text>
+                    <View style={index < 3 ? { ...styles.rankBadge, ...styles.rankBadgeTop } : styles.rankBadge}>
+                      <Text style={styles.rankText}>{getRankIcon(index)}</Text>
                     </View>
+
                     <View style={styles.leaderboardInfo}>
-                      <Text style={styles.leaderboardName}>
-                        {entry.username}
-                        {account?.address.toString() === entry.wallet_address && ' (You)'}
-                      </Text>
-                      <Text style={styles.leaderboardStats}>
-                        {entry.workout_count} workouts • {entry.races_won} races won
-                      </Text>
+                      <View style={styles.leaderboardHeader}>
+                        <Text style={styles.leaderboardName}>
+                          {entry.username}
+                          {isCurrentUser && ' (You)'}
+                        </Text>
+                        {index < 3 && <Badge label="TOP 3" variant="gold" size="sm" />}
+                      </View>
+                      <View style={styles.leaderboardStats}>
+                        <View style={styles.stat}>
+                          <Ionicons name="fitness" size={14} color={colors.text.tertiary} />
+                          <Text style={styles.statText}>{entry.workout_count}</Text>
+                        </View>
+                        <View style={styles.stat}>
+                          <Ionicons name="trophy" size={14} color={colors.text.tertiary} />
+                          <Text style={styles.statText}>{entry.races_won}</Text>
+                        </View>
+                      </View>
                     </View>
+
                     <View style={styles.pointsContainer}>
                       <Text style={styles.pointsValue}>{entry.season_points}</Text>
-                      <Text style={styles.pointsLabel}>pts</Text>
+                      <Text style={styles.pointsLabel}>PTS</Text>
                     </View>
-                  </View>
-                ))
-              )}
-            </View>
-          </>
+                  </Card>
+                )
+              })
+            )}
+          </View>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -235,56 +264,170 @@ export default function Leaderboard() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  scrollView: { flex: 1 },
-  title: { fontSize: 32, fontWeight: 'bold', textAlign: 'center', marginVertical: 20, color: '#111827' },
-  sectionTitle: { fontSize: 18, fontWeight: '600', marginBottom: 12, color: '#111827', paddingHorizontal: 20 },
-  leagueSelector: { marginBottom: 20 },
-  leagueScroll: { paddingHorizontal: 20 },
-  leagueCard: {
-    backgroundColor: '#f3f4f6',
-    padding: 16,
-    borderRadius: 12,
-    marginRight: 12,
-    minWidth: 180,
-    borderWidth: 2,
-    borderColor: 'transparent',
+  container: {
+    flex: 1,
+    backgroundColor: colors.background.primary,
   },
-  leagueCardActive: { backgroundColor: '#10b981', borderColor: '#059669' },
-  leagueName: { fontSize: 16, fontWeight: '600', color: '#111827', marginBottom: 4 },
-  leagueNameActive: { color: '#fff' },
-  leagueSeason: { fontSize: 12, color: '#6b7280', marginBottom: 4 },
-  leagueMembers: { fontSize: 12, color: '#9ca3af' },
-  joinButton: { backgroundColor: '#3b82f6', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6, marginTop: 8 },
-  leaveButton: { backgroundColor: '#ef4444' },
-  joinButtonText: { color: '#fff', fontSize: 12, fontWeight: '600', textAlign: 'center' },
+  scrollView: {
+    flex: 1,
+  },
+  section: {
+    marginBottom: spacing.xl,
+  },
+  sectionTitle: {
+    ...typography.h3,
+    color: colors.text.primary,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+
+  // League Cards
+  leagueScroll: {
+    paddingHorizontal: spacing.md,
+  },
+  leagueCard: {
+    minWidth: 200,
+    marginRight: spacing.md,
+  },
+  leagueCardActive: {
+    borderWidth: 2,
+    borderColor: colors.primary[500],
+  },
+  leagueHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  leagueName: {
+    ...typography.h4,
+    color: colors.text.primary,
+    flex: 1,
+  },
+  leagueSeason: {
+    ...typography.bodySmall,
+    color: colors.text.secondary,
+    marginBottom: spacing.sm,
+  },
+  leagueFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  memberCount: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  memberCountText: {
+    ...typography.caption,
+    color: colors.text.tertiary,
+  },
+  leagueButton: {
+    marginTop: spacing.sm,
+  },
+
+  // User Rank
   userRankCard: {
-    backgroundColor: '#fef3c7',
-    padding: 20,
-    borderRadius: 12,
-    marginHorizontal: 20,
-    marginBottom: 20,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  userRankContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
   },
-  userRankLabel: { fontSize: 14, color: '#92400e', marginBottom: 4 },
-  userRankValue: { fontSize: 36, fontWeight: 'bold', color: '#92400e' },
-  leaderboardContainer: { paddingHorizontal: 20, paddingBottom: 40 },
+  userRankLabel: {
+    ...typography.labelSmall,
+    color: colors.text.tertiary,
+    marginBottom: spacing.xs,
+  },
+  userRankValue: {
+    ...typography.display,
+    color: colors.gold[500],
+  },
+
+  // Leaderboard Items
   leaderboardItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f9fafb',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 8,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.md,
   },
-  leaderboardItemHighlight: { backgroundColor: '#dbeafe', borderWidth: 2, borderColor: '#3b82f6' },
-  rankBadge: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  rankText: { fontSize: 20, fontWeight: 'bold' },
-  leaderboardInfo: { flex: 1 },
-  leaderboardName: { fontSize: 16, fontWeight: '600', color: '#111827', marginBottom: 4 },
-  leaderboardStats: { fontSize: 12, color: '#6b7280' },
-  pointsContainer: { alignItems: 'flex-end' },
-  pointsValue: { fontSize: 24, fontWeight: 'bold', color: '#10b981' },
-  pointsLabel: { fontSize: 12, color: '#6b7280' },
-  emptyText: { fontSize: 14, color: '#9ca3af', textAlign: 'center', marginTop: 20, fontStyle: 'italic' },
+  leaderboardItemHighlight: {
+    borderWidth: 2,
+    borderColor: colors.primary[500],
+  },
+  rankBadge: {
+    width: 48,
+    height: 48,
+    borderRadius: borderRadius.full,
+    backgroundColor: surfaces.elevated2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.md,
+  },
+  rankBadgeTop: {
+    backgroundColor: colors.gold[900],
+  },
+  rankText: {
+    ...typography.h4,
+    color: colors.text.primary,
+  },
+  leaderboardInfo: {
+    flex: 1,
+  },
+  leaderboardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  leaderboardName: {
+    ...typography.h4,
+    color: colors.text.primary,
+  },
+  leaderboardStats: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  stat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  statText: {
+    ...typography.caption,
+    color: colors.text.tertiary,
+  },
+  pointsContainer: {
+    alignItems: 'flex-end',
+  },
+  pointsValue: {
+    ...typography.h2,
+    color: colors.secondary[500],
+    fontWeight: '700',
+  },
+  pointsLabel: {
+    ...typography.labelSmall,
+    color: colors.text.tertiary,
+  },
+
+  // Empty State
+  emptyCard: {
+    alignItems: 'center',
+    paddingVertical: spacing.xxxl,
+    marginHorizontal: spacing.md,
+  },
+  emptyText: {
+    ...typography.h4,
+    color: colors.text.secondary,
+    marginTop: spacing.md,
+  },
+  emptySubtext: {
+    ...typography.bodySmall,
+    color: colors.text.tertiary,
+    marginTop: spacing.xs,
+  },
 })

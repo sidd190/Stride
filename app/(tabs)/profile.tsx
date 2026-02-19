@@ -375,7 +375,7 @@ export default function Profile() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#0a0a0a',
   },
   scrollView: {
     flex: 1,
@@ -385,48 +385,56 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginBottom: 20,
+    fontSize: 32,
+    fontWeight: '800',
+    marginBottom: 24,
     textAlign: 'center',
+    color: '#ffffff',
   },
   subtitle: {
     fontSize: 18,
     fontWeight: '600',
     marginBottom: 15,
     textAlign: 'center',
+    color: '#ffffff',
   },
   profileCard: {
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#1a1a1a',
     padding: 20,
-    borderRadius: 10,
+    borderRadius: 16,
     gap: 10,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
   },
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#6b7280',
+    color: '#888888',
     marginTop: 10,
   },
   value: {
     fontSize: 16,
-    color: '#111827',
+    color: '#ffffff',
   },
   createForm: {
     gap: 15,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    padding: 12,
+    borderColor: '#2a2a2a',
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    padding: 14,
     fontSize: 16,
+    color: '#ffffff',
   },
   networkSelect: {
     marginTop: 10,
     padding: 10,
-    backgroundColor: '#f9fafb',
-    borderRadius: 8,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
   },
   workoutHistorySection: {
     marginTop: 20,
@@ -434,32 +442,34 @@ const styles = StyleSheet.create({
   workoutHistoryTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#111827',
+    color: '#ffffff',
     marginBottom: 10,
   },
   workoutList: {
     gap: 8,
   },
   workoutItem: {
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#0f0f0f',
     padding: 12,
-    borderRadius: 8,
+    borderRadius: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
   },
   workoutDate: {
     fontSize: 14,
-    color: '#6b7280',
+    color: '#888888',
     fontWeight: '500',
   },
   workoutStats: {
     fontSize: 14,
-    color: '#111827',
+    color: '#ffffff',
   },
   noWorkouts: {
     fontSize: 14,
-    color: '#9ca3af',
+    color: '#666666',
     fontStyle: 'italic',
     textAlign: 'center',
     paddingVertical: 10,
@@ -470,17 +480,19 @@ const styles = StyleSheet.create({
   raceHistoryTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#111827',
+    color: '#ffffff',
     marginBottom: 10,
   },
   raceList: {
     gap: 8,
   },
   raceItem: {
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#0f0f0f',
     padding: 12,
-    borderRadius: 8,
+    borderRadius: 12,
     gap: 6,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
   },
   raceHeader: {
     flexDirection: 'row',
@@ -490,15 +502,15 @@ const styles = StyleSheet.create({
   raceCode: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#3b82f6',
+    color: '#00d4ff',
   },
   raceDate: {
     fontSize: 12,
-    color: '#6b7280',
+    color: '#888888',
   },
   raceStats: {
     fontSize: 13,
-    color: '#6b7280',
+    color: '#888888',
   },
   raceResult: {
     flexDirection: 'row',
@@ -513,11 +525,11 @@ const styles = StyleSheet.create({
   raceTime: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#111827',
+    color: '#ffffff',
   },
   noRaces: {
     fontSize: 14,
-    color: '#9ca3af',
+    color: '#666666',
     fontStyle: 'italic',
     textAlign: 'center',
     paddingVertical: 10,
@@ -528,19 +540,21 @@ const styles = StyleSheet.create({
   leaguesTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#111827',
+    color: '#ffffff',
     marginBottom: 10,
   },
   leaguesList: {
     gap: 8,
   },
   leagueItem: {
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#0f0f0f',
     padding: 12,
-    borderRadius: 8,
+    borderRadius: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
   },
   leagueInfo: {
     flex: 1,
@@ -548,12 +562,12 @@ const styles = StyleSheet.create({
   leagueName: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#111827',
+    color: '#ffffff',
     marginBottom: 2,
   },
   leagueSeason: {
     fontSize: 12,
-    color: '#6b7280',
+    color: '#888888',
   },
   leaguePoints: {
     alignItems: 'flex-end',
@@ -561,15 +575,15 @@ const styles = StyleSheet.create({
   leaguePointsValue: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#10b981',
+    color: '#00ff88',
   },
   leaguePointsLabel: {
     fontSize: 11,
-    color: '#6b7280',
+    color: '#888888',
   },
   noLeagues: {
     fontSize: 14,
-    color: '#9ca3af',
+    color: '#666666',
     fontStyle: 'italic',
     textAlign: 'center',
     paddingVertical: 10,
@@ -579,8 +593,8 @@ const styles = StyleSheet.create({
   },
   skeleton: {
     height: 20,
-    backgroundColor: '#e5e7eb',
-    borderRadius: 4,
+    backgroundColor: '#2a2a2a',
+    borderRadius: 8,
     marginVertical: 8,
   },
   errorContainer: {
@@ -589,11 +603,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   error: {
-    color: '#dc2626',
+    color: '#ff4444',
     textAlign: 'center',
   },
   success: {
-    color: '#16a34a',
+    color: '#00ff88',
     textAlign: 'center',
     marginTop: 10,
   },
