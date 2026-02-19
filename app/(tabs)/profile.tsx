@@ -3,7 +3,7 @@ import { Text, View, TextInput, Button, StyleSheet, Alert, ScrollView, Touchable
 import { SafeAreaView } from 'react-native-safe-area-context'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useMobileWallet } from '@wallet-ui/react-native-web3js'
-import { getProfile, createProfile, deleteProfile, getWorkoutHistory } from '@/services/api'
+import { getProfile, createProfile, deleteProfile, getWorkoutHistory, getRaceHistory, getUserLeagues } from '@/services/api'
 import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'expo-router'
 import { AccountFeatureGetBalance } from '@/features/account/account-feature-get-balance'
@@ -31,6 +31,7 @@ export default function Profile() {
   const [profile, setProfile] = useState<any>(null)
   const [workouts, setWorkouts] = useState<any[]>([])
   const [races, setRaces] = useState<any[]>([])
+  const [leagues, setLeagues] = useState<any[]>([])
   const [username, setUsername] = useState('')
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
@@ -40,6 +41,7 @@ export default function Profile() {
   const [showNetworkSelect, setShowNetworkSelect] = useState(false)
   const [showWorkouts, setShowWorkouts] = useState(false)
   const [showRaces, setShowRaces] = useState(false)
+  const [showLeagues, setShowLeagues] = useState(false)
 
   useEffect(() => {
     if (account) {
@@ -81,11 +83,17 @@ export default function Profile() {
 
         // Load race history
         try {
-          const response = await fetch(`http://localhost:3000/api/races/history/${account.address.toString()}`)
-          const raceData = await response.json()
+          const raceData = await getRaceHistory(account.address.toString())
           setRaces(raceData.races || [])
         } catch (err) {
           console.error('Failed to load races:', err)
+        }
+
+        try {
+          const leagueData = await getUserLeagues(account.address.toString())
+          setLeagues(leagueData.leagues || [])
+        } catch (err) {
+          console.error('Failed to load leagues:', err)
         }
       } else {
         // No profile exists - this is normal for new users
@@ -290,6 +298,35 @@ export default function Profile() {
               )}
             </View>
 
+            <View style={styles.leaguesSection}>
+              <TouchableOpacity onPress={() => setShowLeagues(!showLeagues)}>
+                <Text style={styles.leaguesTitle}>
+                  My Leagues ({leagues.length}) {showLeagues ? '▼' : '▶'}
+                </Text>
+              </TouchableOpacity>
+
+              {showLeagues && leagues.length > 0 && (
+                <View style={styles.leaguesList}>
+                  {leagues.map((league) => (
+                    <View key={league.id} style={styles.leagueItem}>
+                      <View style={styles.leagueInfo}>
+                        <Text style={styles.leagueName}>{league.name}</Text>
+                        <Text style={styles.leagueSeason}>{league.season}</Text>
+                      </View>
+                      <View style={styles.leaguePoints}>
+                        <Text style={styles.leaguePointsValue}>{league.season_points || 0}</Text>
+                        <Text style={styles.leaguePointsLabel}>pts</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {showLeagues && leagues.length === 0 && (
+                <Text style={styles.noLeagues}>No leagues joined. Check the Leaderboard tab!</Text>
+              )}
+            </View>
+
             <View style={styles.deleteButton}>
               <Button
                 title={deleting ? 'Deleting...' : 'Delete Profile'}
@@ -479,6 +516,58 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   noRaces: {
+    fontSize: 14,
+    color: '#9ca3af',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: 10,
+  },
+  leaguesSection: {
+    marginTop: 20,
+  },
+  leaguesTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 10,
+  },
+  leaguesList: {
+    gap: 8,
+  },
+  leagueItem: {
+    backgroundColor: '#f9fafb',
+    padding: 12,
+    borderRadius: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  leagueInfo: {
+    flex: 1,
+  },
+  leagueName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 2,
+  },
+  leagueSeason: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  leaguePoints: {
+    alignItems: 'flex-end',
+  },
+  leaguePointsValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#10b981',
+  },
+  leaguePointsLabel: {
+    fontSize: 11,
+    color: '#6b7280',
+  },
+  noLeagues: {
     fontSize: 14,
     color: '#9ca3af',
     fontStyle: 'italic',

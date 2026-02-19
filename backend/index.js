@@ -8,6 +8,7 @@ import authRoutes from './routes/auth.js'
 import profileRoutes from './routes/profile.js'
 import workoutRoutes from './routes/workouts.js'
 import racesRoutes from './routes/races.js'
+import leaguesRoutes from './routes/leagues.js'
 import { pool } from './db.js'
 
 dotenv.config()
@@ -28,6 +29,7 @@ app.use('/api/auth', authRoutes)
 app.use('/api/profile', profileRoutes)
 app.use('/api/workouts', workoutRoutes)
 app.use('/api/races', racesRoutes)
+app.use('/api/leagues', leaguesRoutes)
 
 // Race management
 const races = new Map() // raceCode -> race data
@@ -55,7 +57,6 @@ async function saveRaceToDatabase(race) {
 
     const raceId = raceResult.rows[0].id
 
-    // Insert participant records
     for (let i = 0; i < race.participants.length; i++) {
       const p = race.participants[i]
       await pool.query(
@@ -63,6 +64,29 @@ async function saveRaceToDatabase(race) {
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [raceId, p.wallet, p.username, p.distance, p.finishTime || null, i + 1, p.finished]
       )
+
+      // Award points based on position
+      if (p.finished) {
+        let points = 0
+        if (i === 0) points = 100 
+        else if (i === 1) points = 75 
+        else if (i === 2) points = 50
+        else points = 25 
+
+        await pool.query(
+          `UPDATE profiles 
+           SET total_points = COALESCE(total_points, 0) + $1 
+           WHERE wallet_address = $2`,
+          [points, p.wallet]
+        )
+
+        await pool.query(
+          `UPDATE league_membership 
+           SET season_points = COALESCE(season_points, 0) + $1 
+           WHERE wallet_address = $2`,
+          [points, p.wallet]
+        )
+      }
     }
 
     console.log(`Race ${race.code} saved to database`)
@@ -261,4 +285,4 @@ io.on('connection', (socket) => {
   })
 })
 
-httpServer.listen(3000, () => console.log('Backend running on port 3000'))
+httpServer.listen(3000, '0.0.0.0', () => console.log('Backend running on port 3000 (accessible from network)'))

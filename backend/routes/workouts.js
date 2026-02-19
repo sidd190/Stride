@@ -34,9 +34,9 @@ router.post("/", async (req, res) => {
     const distanceMeters = Math.round(distance * 1000);
 
     const result = await pool.query(
-      `INSERT INTO workouts(wallet_address, duration, distance, created_at) 
+      `INSERT INTO workouts(wallet_address, duration, distance, completed_at) 
        VALUES($1, $2, $3, NOW()) 
-       RETURNING workout_id`,
+       RETURNING id`,
       [wallet, duration, distanceMeters]
     );
 
@@ -47,11 +47,19 @@ router.post("/", async (req, res) => {
       [points, wallet]
     );
 
+    // Update league points for all leagues user is in
+    await pool.query(
+      `UPDATE league_membership 
+       SET season_points = COALESCE(season_points, 0) + $1 
+       WHERE wallet_address = $2`,
+      [points, wallet]
+    );
+
     res.json({
       success: true,
       message: "Workout saved successfully",
       workout: {
-        id: result.rows[0].workout_id,
+        id: result.rows[0].id,
         points: points,
       },
     });
@@ -66,14 +74,14 @@ router.get("/:wallet", async (req, res) => {
     const { wallet } = req.params;
     const result = await pool.query(
       `SELECT 
-        workout_id as id, 
+        id, 
         duration, 
         distance / 1000.0 as distance,
-        created_at as completed_at,
+        completed_at,
         FLOOR(duration / 60 + (distance / 1000.0) * 10) as points
        FROM workouts 
        WHERE wallet_address = $1 
-       ORDER BY created_at DESC 
+       ORDER BY completed_at DESC 
        LIMIT 20`,
       [wallet]
     );

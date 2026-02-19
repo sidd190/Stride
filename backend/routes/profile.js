@@ -27,6 +27,12 @@ router.post("/", async (req, res) => {
       [wallet, username]
     );
 
+    // Auto-join Global League (league_id = 1)
+    await pool.query(
+      "INSERT INTO league_membership(wallet_address, league_id) VALUES($1, 1) ON CONFLICT DO NOTHING",
+      [wallet]
+    );
+
     res.json({ success: true, message: "Profile created" });
   } catch (error) {
     console.error("Error creating profile:", error);
