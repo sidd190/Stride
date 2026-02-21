@@ -39,6 +39,7 @@ app.use('/api/leagues', leaguesRoutes)
 
 // Race management
 const races = new Map() // raceCode -> race data
+const relays = new Map() // raceCode -> relay data
 
 // Generate 6-digit race code
 function generateRaceCode() {
@@ -288,6 +289,246 @@ io.on('connection', (socket) => {
         }
       }
     })
+
+    // Remove from all relays
+    relays.forEach((relay, code) => {
+      relay.teams.forEach((team) => {
+        const memberIndex = team.members.findIndex((m) => m.id === socket.id)
+        if (memberIndex !== -1) {
+          team.members.splice(memberIndex, 1)
+          io.to(code).emit('relay_updated', { relay })
+        }
+      })
+    })
+  })
+
+  // ============ RELAY RACE HANDLERS ============
+
+  socket.on('create_relay', ({ distancePerLeg, legsPerTeam, numTeams, username, wallet }) => {
+    const code = generateRaceCode()
+    
+    // Create teams
+    const teamCount = parseInt(numTeams) || Math.min(4, legsPerTeam)
+    const teamNames = ['ALPHA', 'BETA', 'GAMMA', 'DELTA']
+    const teamColors = ['#a855f7', '#22c55e', '#3b82f6', '#f59e0b']
+    
+    const teams = []
+    for (let i = 0; i < teamCount; i++) {
+      teams.push({
+        id: `team-${i + 1}`,
+        name: teamNames[i],
+        color: teamColors[i],
+        members: [],
+        currentLeg: 1,
+        totalDistance: 0,
+        finished: false,
+        finishTime: null,
+      })
+    }
+    
+    const relay = {
+      code,
+      host: wallet,
+      distancePerLeg: parseFloat(distancePerLeg),
+      legsPerTeam: parseInt(legsPerTeam),
+      numTeams: teamCount,
+      teams,
+      status: 'lobby',
+      startTime: null,
+    }
+    
+    relays.set(code, relay)
+    socket.join(code)
+    socket.emit('relay_created', { code, relay })
+    console.log(`Relay created: ${code} (${teamCount} teams, ${legsPerTeam} legs, ${distancePerLeg}km each)`)
+  })
+
+  socket.on('fetch_relay', ({ code }) => {
+    const relay = relays.get(code)
+    
+    if (!relay) {
+      socket.emit('error', { message: 'Relay not found' })
+      return
+    }
+    
+    socket.emit('relay_fetched', { relay })
+  })
+
+  socket.on('join_relay', ({ code, teamId, legOrder, username, wallet }) => {
+    const relay = relays.get(code)
+    
+    if (!relay) {
+      socket.emit('error', { message: 'Relay not found' })
+      return
+    }
+    
+    if (relay.status !== 'lobby') {
+      socket.emit('error', { message: 'Relay already started' })
+      return
+    }
+    
+    const team = relay.teams.find((t) => t.id === teamId)
+    
+    if (!team) {
+      socket.emit('error', { message: 'Team not found' })
+      return
+    }
+    
+    // Check if leg is already taken
+    const legTaken = team.members.some((m) => m.legOrder === legOrder)
+    if (legTaken) {
+      socket.emit('error', { message: 'Leg already taken' })
+      return
+    }
+    
+    // Check if team is full
+    if (team.members.length >= relay.legsPerTeam) {
+      socket.emit('error', { message: 'Team is full' })
+      return
+    }
+    
+    const member = {
+      id: socket.id,
+      username: username || 'Anonymous',
+      wallet,
+      legOrder,
+      distance: 0,
+      completed: false,
+      finishTime: null,
+    }
+    
+    team.members.push(member)
+    team.members.sort((a, b) => a.legOrder - b.legOrder)
+    
+    socket.join(code)
+    socket.emit('relay_joined', { relay })
+    io.to(code).emit('relay_updated', { relay })
+    console.log(`${username} joined relay ${code} - Team ${team.name}, Leg ${legOrder}`)
+  })
+
+  socket.on('start_relay', ({ code }) => {
+    const relay = relays.get(code)
+    
+    if (!relay) {
+      socket.emit('error', { message: 'Relay not found' })
+      return
+    }
+    
+    // Check if all teams have at least one member
+    const allTeamsReady = relay.teams.every((t) => t.members.length > 0)
+    if (!allTeamsReady) {
+      socket.emit('error', { message: 'All teams need at least one member' })
+      return
+    }
+    
+    relay.status = 'countdown'
+    io.to(code).emit('countdown_started')
+    
+    // 3-2-1-GO countdown
+    let count = 3
+    const countdown = setInterval(() => {
+      io.to(code).emit('countdown_tick', { count })
+      count--
+      
+      if (count < 0) {
+        clearInterval(countdown)
+        relay.status = 'active'
+        relay.startTime = Date.now()
+        io.to(code).emit('relay_started', { startTime: relay.startTime })
+        console.log(`Relay ${code} started`)
+      }
+    }, 1000)
+  })
+
+  socket.on('update_relay_progress', ({ code, distance }) => {
+    const relay = relays.get(code)
+    
+    if (!relay || relay.status !== 'active') return
+    
+    // Find member's team and update distance
+    for (const team of relay.teams) {
+      const member = team.members.find((m) => m.id === socket.id)
+      if (member && member.legOrder === team.currentLeg && !member.completed) {
+        member.distance = distance
+        
+        // Calculate team total distance
+        team.totalDistance = team.members
+          .filter((m) => m.completed)
+          .reduce((sum) => sum + relay.distancePerLeg, 0) + distance
+        
+        io.to(code).emit('relay_updated', { relay })
+        break
+      }
+    }
+  })
+
+  socket.on('complete_leg', ({ code }) => {
+    const relay = relays.get(code)
+    
+    if (!relay) return
+    
+    // Find member's team
+    for (const team of relay.teams) {
+      const member = team.members.find((m) => m.id === socket.id)
+      if (member && member.legOrder === team.currentLeg && !member.completed) {
+        // Mark leg as completed
+        member.completed = true
+        member.finishTime = Date.now() - relay.startTime
+        member.distance = relay.distancePerLeg
+        
+        // Update team total distance
+        team.totalDistance = team.members
+          .filter((m) => m.completed)
+          .reduce((sum) => sum + relay.distancePerLeg, 0)
+        
+        // Check if team finished
+        if (team.currentLeg >= relay.legsPerTeam) {
+          team.finished = true
+          team.finishTime = Date.now() - relay.startTime
+          console.log(`Team ${team.name} finished relay ${code}!`)
+        } else {
+          // Pass baton to next leg
+          team.currentLeg++
+          io.to(code).emit('baton_passed', { team, leg: team.currentLeg })
+          console.log(`Baton passed to leg ${team.currentLeg} in team ${team.name}`)
+        }
+        
+        io.to(code).emit('relay_updated', { relay })
+        
+        // Check if all teams finished
+        const allFinished = relay.teams.every((t) => t.finished)
+        if (allFinished) {
+          relay.status = 'finished'
+          
+          // Sort teams by finish time
+          const results = relay.teams
+            .filter((t) => t.finished)
+            .sort((a, b) => a.finishTime - b.finishTime)
+          
+          io.to(code).emit('relay_finished', { results })
+          console.log(`Relay ${code} finished!`)
+        }
+        
+        break
+      }
+    }
+  })
+
+  socket.on('leave_relay', ({ code }) => {
+    const relay = relays.get(code)
+    if (!relay) return
+    
+    // Remove member from team
+    for (const team of relay.teams) {
+      const memberIndex = team.members.findIndex((m) => m.id === socket.id)
+      if (memberIndex !== -1) {
+        team.members.splice(memberIndex, 1)
+        break
+      }
+    }
+    
+    socket.leave(code)
+    io.to(code).emit('relay_updated', { relay })
   })
 })
 

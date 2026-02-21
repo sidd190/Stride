@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { Card } from '@/components/ui/Card'
 
 type RaceScreen = 'home' | 'create' | 'join' | 'lobby' | 'countdown' | 'active' | 'results'
+type RaceMode = 'solo' | 'relay'
 
 interface Participant {
   id: string
@@ -22,11 +23,41 @@ interface Participant {
   finishTime?: number
 }
 
+interface TeamMember {
+  id: string
+  username: string
+  wallet: string
+  legOrder: number
+  distance: number
+  completed: boolean
+  finishTime?: number
+}
+
+interface Team {
+  id: string
+  name: string
+  color: string
+  members: TeamMember[]
+  currentLeg: number
+  totalDistance: number
+  finished: boolean
+}
+
 interface Race {
   code: string
   host: string
   targetDistance: number
   participants: Participant[]
+  status: string
+  startTime: number | null
+}
+
+interface RelayRace {
+  code: string
+  host: string
+  distancePerLeg: number
+  legsPerTeam: number
+  teams: Team[]
   status: string
   startTime: number | null
 }
@@ -39,18 +70,30 @@ interface LeaderboardEntry {
   finished: boolean
 }
 
+const TEAM_COLORS = ['#a855f7', '#22c55e', '#3b82f6', '#f59e0b']
+const TEAM_NAMES = ['ALPHA', 'BETA', 'GAMMA', 'DELTA']
+
 export default function Race() {
   const { account } = useMobileWallet()
   const [currentScreen, setCurrentScreen] = useState<RaceScreen>('home')
+  const [raceMode, setRaceMode] = useState<RaceMode>('solo')
   const [raceCode, setRaceCode] = useState('')
   const [targetDistance, setTargetDistance] = useState('5')
+  const [distancePerLeg, setDistancePerLeg] = useState('2')
+  const [legsPerTeam, setLegsPerTeam] = useState('4')
+  const [numTeams, setNumTeams] = useState('4')
   const [race, setRace] = useState<Race | null>(null)
+  const [relay, setRelay] = useState<RelayRace | null>(null)
+  const [selectedTeam, setSelectedTeam] = useState<string | null>(null)
+  const [selectedLeg, setSelectedLeg] = useState<number>(1)
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
   const [countdown, setCountdown] = useState(3)
   const [myDistance, setMyDistance] = useState(0)
   const [myPace, setMyPace] = useState(0)
   const [results, setResults] = useState<Participant[]>([])
+  const [relayResults, setRelayResults] = useState<Team[]>([])
   const [currentLocation, setCurrentLocation] = useState<Location.LocationObject | null>(null)
+  const [hasActiveBaton, setHasActiveBaton] = useState(false)
   
   const locationSubscription = useRef<Location.LocationSubscription | null>(null)
   const lastPosition = useRef<{ latitude: number; longitude: number } | null>(null)
@@ -60,6 +103,7 @@ export default function Race() {
   useEffect(() => {
     const socket = socketService.connect()
 
+    // Solo race events
     socket.on('race_created', ({ code, race: newRace }) => {
       setRaceCode(code)
       setRace(newRace)
@@ -79,6 +123,32 @@ export default function Race() {
       setRace(updatedRace)
     })
 
+    // Relay race events
+    socket.on('relay_created', ({ code, relay: newRelay }) => {
+      setRaceCode(code)
+      setRelay(newRelay)
+      setCurrentScreen('lobby')
+    })
+
+    socket.on('relay_joined', ({ relay: joinedRelay }) => {
+      setRelay(joinedRelay)
+      setCurrentScreen('lobby')
+    })
+
+    socket.on('relay_updated', ({ relay: updatedRelay }) => {
+      setRelay(updatedRelay)
+      checkBatonStatus(updatedRelay)
+    })
+
+    socket.on('relay_fetched', ({ relay: fetchedRelay }) => {
+      setRelay(fetchedRelay)
+    })
+
+    socket.on('baton_passed', ({ team, leg }) => {
+      Alert.alert('Baton Passed', `Team ${team.name} passed to leg ${leg}`)
+    })
+
+    // Common events
     socket.on('countdown_started', () => {
       setCurrentScreen('countdown')
       setCountdown(3)
@@ -91,7 +161,17 @@ export default function Race() {
     socket.on('race_started', ({ startTime }) => {
       setCurrentScreen('active')
       raceStartTime.current = startTime
-      startLocationTracking()
+      if (raceMode === 'solo') {
+        startLocationTracking()
+      } else {
+        checkBatonStatus(relay)
+      }
+    })
+
+    socket.on('relay_started', ({ startTime }) => {
+      setCurrentScreen('active')
+      raceStartTime.current = startTime
+      checkBatonStatus(relay)
     })
 
     socket.on('leaderboard_update', ({ leaderboard: newLeaderboard }) => {
@@ -108,6 +188,12 @@ export default function Race() {
       setCurrentScreen('results')
     })
 
+    socket.on('relay_finished', ({ results: finalResults }) => {
+      stopLocationTracking()
+      setRelayResults(finalResults)
+      setCurrentScreen('results')
+    })
+
     socket.on('error', ({ message }) => {
       Alert.alert('Error', message)
     })
@@ -116,7 +202,31 @@ export default function Race() {
       stopLocationTracking()
       socketService.disconnect()
     }
-  }, [])
+  }, [raceMode, relay])
+
+  const checkBatonStatus = (currentRelay: RelayRace | null) => {
+    if (!currentRelay || !account) return
+
+    const myTeam = currentRelay.teams.find(t => 
+      t.members.some(m => m.wallet === account.address.toString())
+    )
+
+    if (!myTeam) return
+
+    const myMember = myTeam.members.find(m => m.wallet === account.address.toString())
+    if (!myMember) return
+
+    const shouldHaveBaton = myTeam.currentLeg === myMember.legOrder && !myMember.completed
+    
+    if (shouldHaveBaton && !hasActiveBaton) {
+      setHasActiveBaton(true)
+      startLocationTracking()
+      Alert.alert('Your Turn!', 'You have the baton. Start running!')
+    } else if (!shouldHaveBaton && hasActiveBaton) {
+      setHasActiveBaton(false)
+      stopLocationTracking()
+    }
+  }
 
   const startLocationTracking = async () => {
     const { status } = await Location.requestForegroundPermissionsAsync()
@@ -165,8 +275,23 @@ export default function Race() {
           distance: distanceAccumulator.current,
           pace: newPace,
         })
+
+        // Check if leg completed (for relay mode)
+        if (raceMode === 'relay' && hasActiveBaton) {
+          const targetDist = parseFloat(distancePerLeg)
+          if (distanceAccumulator.current >= targetDist) {
+            handleLegComplete()
+          }
+        }
       }
     )
+  }
+
+  const handleLegComplete = () => {
+    socketService.emit('complete_leg', { code: raceCode })
+    setHasActiveBaton(false)
+    stopLocationTracking()
+    Alert.alert('Leg Complete', 'Baton passed to next runner!')
   }
 
   const stopLocationTracking = () => {
@@ -199,10 +324,36 @@ export default function Race() {
       return
     }
 
-    socketService.emit('create_race', {
-      targetDistance,
-      username: 'User',
-      wallet: account.address.toString(),
+    if (raceMode === 'solo') {
+      console.log('Creating solo race with distance:', targetDistance)
+      socketService.emit('create_race', {
+        targetDistance,
+        username: 'User',
+        wallet: account.address.toString(),
+      })
+    } else {
+      console.log('Creating relay race:', {
+        distancePerLeg: parseFloat(distancePerLeg),
+        legsPerTeam: parseInt(legsPerTeam),
+      })
+      socketService.emit('create_relay', {
+        distancePerLeg: parseFloat(distancePerLeg),
+        legsPerTeam: parseInt(legsPerTeam),
+        numTeams: parseInt(numTeams),
+        username: 'User',
+        wallet: account.address.toString(),
+      })
+    }
+  }
+
+  const handleFetchRelay = () => {
+    if (!raceCode.trim()) {
+      Alert.alert('Error', 'Enter race code first')
+      return
+    }
+
+    socketService.emit('fetch_relay', {
+      code: raceCode.toUpperCase(),
     })
   }
 
@@ -217,22 +368,47 @@ export default function Race() {
       return
     }
 
-    socketService.emit('join_race', {
-      code: raceCode.toUpperCase(),
-      username: 'User',
-      wallet: account.address.toString(),
-    })
+    if (raceMode === 'solo') {
+      socketService.emit('join_race', {
+        code: raceCode.toUpperCase(),
+        username: 'User',
+        wallet: account.address.toString(),
+      })
+    } else {
+      if (!selectedTeam) {
+        Alert.alert('Error', 'Select a team')
+        return
+      }
+
+      socketService.emit('join_relay', {
+        code: raceCode.toUpperCase(),
+        teamId: selectedTeam,
+        legOrder: selectedLeg,
+        username: 'User',
+        wallet: account.address.toString(),
+      })
+    }
   }
 
   const handleStartRace = () => {
-    socketService.emit('start_race', { code: raceCode })
+    if (raceMode === 'solo') {
+      socketService.emit('start_race', { code: raceCode })
+    } else {
+      socketService.emit('start_relay', { code: raceCode })
+    }
   }
 
   const handleLeaveRace = () => {
     stopLocationTracking()
-    socketService.emit('leave_race', { code: raceCode })
+    if (raceMode === 'solo') {
+      socketService.emit('leave_race', { code: raceCode })
+    } else {
+      socketService.emit('leave_relay', { code: raceCode })
+    }
     setRace(null)
+    setRelay(null)
     setRaceCode('')
+    setSelectedTeam(null)
     setMyDistance(0)
     setMyPace(0)
     setLeaderboard([])
@@ -267,6 +443,37 @@ export default function Race() {
 
   const renderHomeScreen = () => (
     <View style={styles.centerContainer}>
+      {/* Mode Selector */}
+      <View style={styles.modeSelector}>
+        <TouchableOpacity
+          style={[styles.modeButton, raceMode === 'solo' && styles.modeButtonActive]}
+          onPress={() => setRaceMode('solo')}
+        >
+          <Ionicons 
+            name="person-outline" 
+            size={24} 
+            color={raceMode === 'solo' ? colors.background.primary : colors.text.tertiary} 
+          />
+          <Text style={[styles.modeButtonText, raceMode === 'solo' && styles.modeButtonTextActive]}>
+            SOLO
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.modeButton, raceMode === 'relay' && styles.modeButtonActive]}
+          onPress={() => setRaceMode('relay')}
+        >
+          <Ionicons 
+            name="people-outline" 
+            size={24} 
+            color={raceMode === 'relay' ? colors.background.primary : colors.text.tertiary} 
+          />
+          <Text style={[styles.modeButtonText, raceMode === 'relay' && styles.modeButtonTextActive]}>
+            RELAY
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.buttonGroup}>
         <TouchableOpacity style={styles.primaryButton} onPress={() => setCurrentScreen('create')}>
           <Text style={styles.primaryButtonText}>CREATE</Text>
@@ -282,33 +489,107 @@ export default function Race() {
   const renderCreateScreen = () => (
     <ScrollView contentContainerStyle={styles.scrollContainer}>
       <View style={styles.formContainer}>
-        <Text style={styles.formLabel}>DISTANCE (KM)</Text>
-        <TextInput
-          style={styles.input}
-          value={targetDistance}
-          onChangeText={setTargetDistance}
-          keyboardType="numeric"
-          placeholderTextColor={colors.text.tertiary}
-        />
+        {raceMode === 'solo' ? (
+          <>
+            <Text style={styles.formLabel}>DISTANCE (KM)</Text>
+            <TextInput
+              style={styles.input}
+              value={targetDistance}
+              onChangeText={setTargetDistance}
+              keyboardType="numeric"
+              placeholderTextColor={colors.text.tertiary}
+            />
 
-        <View style={styles.distanceButtons}>
-          {['1', '3', '5', '10', '21'].map((dist) => (
-            <TouchableOpacity
-              key={dist}
-              style={[styles.distanceButton, targetDistance === dist && styles.distanceButtonActive]}
-              onPress={() => setTargetDistance(dist)}
-            >
-              <Text
-                style={[
-                  styles.distanceButtonText,
-                  targetDistance === dist && styles.distanceButtonTextActive,
-                ]}
-              >
-                {dist}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+            <View style={styles.distanceButtons}>
+              {['1', '3', '5', '10', '21'].map((dist) => (
+                <TouchableOpacity
+                  key={dist}
+                  style={[styles.distanceButton, targetDistance === dist && styles.distanceButtonActive]}
+                  onPress={() => setTargetDistance(dist)}
+                >
+                  <Text
+                    style={[
+                      styles.distanceButtonText,
+                      targetDistance === dist && styles.distanceButtonTextActive,
+                    ]}
+                  >
+                    {dist}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        ) : (
+          <>
+            <Text style={styles.formLabel}>DISTANCE PER LEG (KM)</Text>
+            <TextInput
+              style={styles.input}
+              value={distancePerLeg}
+              onChangeText={setDistancePerLeg}
+              keyboardType="numeric"
+              placeholderTextColor={colors.text.tertiary}
+            />
+
+            <View style={styles.distanceButtons}>
+              {['1', '2', '3', '5'].map((dist) => (
+                <TouchableOpacity
+                  key={dist}
+                  style={[styles.distanceButton, distancePerLeg === dist && styles.distanceButtonActive]}
+                  onPress={() => setDistancePerLeg(dist)}
+                >
+                  <Text
+                    style={[
+                      styles.distanceButtonText,
+                      distancePerLeg === dist && styles.distanceButtonTextActive,
+                    ]}
+                  >
+                    {dist}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.formLabel}>NUMBER OF TEAMS</Text>
+            <View style={styles.distanceButtons}>
+              {['2', '3', '4'].map((teams) => (
+                <TouchableOpacity
+                  key={teams}
+                  style={[styles.distanceButton, numTeams === teams && styles.distanceButtonActive]}
+                  onPress={() => setNumTeams(teams)}
+                >
+                  <Text
+                    style={[
+                      styles.distanceButtonText,
+                      numTeams === teams && styles.distanceButtonTextActive,
+                    ]}
+                  >
+                    {teams}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.formLabel}>LEGS PER TEAM</Text>
+            <View style={styles.distanceButtons}>
+              {['2', '3', '4'].map((legs) => (
+                <TouchableOpacity
+                  key={legs}
+                  style={[styles.distanceButton, legsPerTeam === legs && styles.distanceButtonActive]}
+                  onPress={() => setLegsPerTeam(legs)}
+                >
+                  <Text
+                    style={[
+                      styles.distanceButtonText,
+                      legsPerTeam === legs && styles.distanceButtonTextActive,
+                    ]}
+                  >
+                    {legs}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        )}
 
         <TouchableOpacity style={styles.actionButton} onPress={handleCreateRace}>
           <Text style={styles.actionButtonText}>CREATE</Text>
@@ -322,7 +603,7 @@ export default function Race() {
   )
 
   const renderJoinScreen = () => (
-    <View style={styles.centerContainer}>
+    <ScrollView contentContainerStyle={styles.scrollContainer}>
       <View style={styles.formContainer}>
         <Text style={styles.formLabel}>RACE CODE</Text>
         <TextInput
@@ -335,44 +616,131 @@ export default function Race() {
           autoCapitalize="characters"
         />
 
-        <TouchableOpacity style={styles.actionButton} onPress={handleJoinRace}>
-          <Text style={styles.actionButtonText}>JOIN</Text>
-        </TouchableOpacity>
+        {raceMode === 'relay' && !relay && (
+          <TouchableOpacity style={styles.actionButton} onPress={handleFetchRelay}>
+            <Text style={styles.actionButtonText}>FETCH RELAY</Text>
+          </TouchableOpacity>
+        )}
+
+        {raceMode === 'relay' && relay && (
+          <>
+            <Text style={styles.formLabel}>SELECT TEAM</Text>
+            <View style={styles.teamsContainer}>
+              {relay.teams.map((team) => (
+                <TouchableOpacity
+                  key={team.id}
+                  style={[
+                    styles.teamCard,
+                    { borderColor: team.color },
+                    selectedTeam === team.id && styles.teamCardActive,
+                  ]}
+                  onPress={() => setSelectedTeam(team.id)}
+                >
+                  <View style={[styles.teamColorDot, { backgroundColor: team.color }]} />
+                  <Text style={styles.teamName}>{team.name}</Text>
+                  <Text style={styles.teamMembers}>{team.members.length}/{relay.legsPerTeam}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.formLabel}>SELECT LEG</Text>
+            <View style={styles.distanceButtons}>
+              {Array.from({ length: relay.legsPerTeam }, (_, i) => i + 1).map((leg) => (
+                <TouchableOpacity
+                  key={leg}
+                  style={[styles.distanceButton, selectedLeg === leg && styles.distanceButtonActive]}
+                  onPress={() => setSelectedLeg(leg)}
+                >
+                  <Text
+                    style={[
+                      styles.distanceButtonText,
+                      selectedLeg === leg && styles.distanceButtonTextActive,
+                    ]}
+                  >
+                    {leg}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity style={styles.actionButton} onPress={handleJoinRace}>
+              <Text style={styles.actionButtonText}>JOIN</Text>
+            </TouchableOpacity>
+          </>
+        )}
+
+        {raceMode === 'solo' && (
+          <TouchableOpacity style={styles.actionButton} onPress={handleJoinRace}>
+            <Text style={styles.actionButtonText}>JOIN</Text>
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity style={styles.backButton} onPress={() => setCurrentScreen('home')}>
           <Text style={styles.backButtonText}>BACK</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </ScrollView>
   )
 
   const renderLobbyScreen = () => (
-    <View style={styles.centerContainer}>
+    <ScrollView contentContainerStyle={styles.scrollContainer}>
       <Card style={styles.codeCard}>
         <Text style={styles.codeLabel}>CODE</Text>
         <Text style={styles.codeText}>{raceCode}</Text>
       </Card>
 
-      <Card style={styles.distanceCard}>
-        <Text style={styles.distanceLabel}>TARGET</Text>
-        <Text style={styles.distanceValue}>{race?.targetDistance} KM</Text>
-      </Card>
+      {raceMode === 'solo' ? (
+        <>
+          <Card style={styles.distanceCard}>
+            <Text style={styles.distanceLabel}>TARGET</Text>
+            <Text style={styles.distanceValue}>{race?.targetDistance} KM</Text>
+          </Card>
 
-      <Card style={styles.participantsCard}>
-        <Text style={styles.participantsTitle}>PARTICIPANTS ({race?.participants.length})</Text>
-        <View style={styles.participantsList}>
-          {race?.participants.map((p) => (
-            <View key={p.id} style={styles.participantItem}>
-              <View style={styles.participantDot} />
-              <Text style={styles.participantName}>
-                {p.username} {p.isHost && '(HOST)'}
-              </Text>
+          <Card style={styles.participantsCard}>
+            <Text style={styles.participantsTitle}>PARTICIPANTS ({race?.participants.length})</Text>
+            <View style={styles.participantsList}>
+              {race?.participants.map((p) => (
+                <View key={p.id} style={styles.participantItem}>
+                  <View style={styles.participantDot} />
+                  <Text style={styles.participantName}>
+                    {p.username} {p.isHost && '(HOST)'}
+                  </Text>
+                </View>
+              ))}
             </View>
-          ))}
-        </View>
-      </Card>
+          </Card>
+        </>
+      ) : (
+        <>
+          <Card style={styles.distanceCard}>
+            <Text style={styles.distanceLabel}>DISTANCE PER LEG</Text>
+            <Text style={styles.distanceValue}>{relay?.distancePerLeg} KM</Text>
+          </Card>
 
-      {race?.participants.some((p) => p.id === socketService.getSocket()?.id && p.isHost) && (
+          <View style={styles.teamsLobbyContainer}>
+            {relay?.teams.map((team) => (
+              <Card key={team.id} style={[styles.teamLobbyCard, { borderLeftColor: team.color, borderLeftWidth: 4 }]}>
+                <View style={styles.teamLobbyHeader}>
+                  <View style={[styles.teamColorDot, { backgroundColor: team.color }]} />
+                  <Text style={styles.teamLobbyName}>{team.name}</Text>
+                  <Text style={styles.teamMembers}>{team.members.length}/{relay.legsPerTeam}</Text>
+                </View>
+                <View style={styles.teamMembersList}>
+                  {team.members.map((member) => (
+                    <View key={member.id} style={styles.teamMemberItem}>
+                      <Text style={styles.legNumber}>LEG {member.legOrder}</Text>
+                      <Text style={styles.memberName}>{member.username}</Text>
+                    </View>
+                  ))}
+                </View>
+              </Card>
+            ))}
+          </View>
+        </>
+      )}
+
+      {((raceMode === 'solo' && race?.participants.some((p) => p.id === socketService.getSocket()?.id && p.isHost)) ||
+        (raceMode === 'relay' && relay?.host === account?.address.toString())) && (
         <TouchableOpacity style={styles.actionButton} onPress={handleStartRace}>
           <Text style={styles.actionButtonText}>START</Text>
         </TouchableOpacity>
@@ -381,7 +749,7 @@ export default function Race() {
       <TouchableOpacity style={styles.backButton} onPress={handleLeaveRace}>
         <Text style={styles.backButtonText}>LEAVE</Text>
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   )
 
   const renderCountdownScreen = () => (
@@ -390,101 +758,230 @@ export default function Race() {
     </View>
   )
 
-  const renderActiveScreen = () => (
-    <View style={styles.activeContainer}>
-      {currentLocation && (
-        <View style={styles.mapContainer}>
-          <MapView
-            style={styles.map}
-            provider={PROVIDER_GOOGLE}
-            region={{
-              latitude: currentLocation.coords.latitude,
-              longitude: currentLocation.coords.longitude,
-              latitudeDelta: 0.01,
-              longitudeDelta: 0.01,
-            }}
-            showsUserLocation={true}
-            showsMyLocationButton={false}
-          >
-            <Marker
-              coordinate={{
+  const renderActiveScreen = () => {
+    if (raceMode === 'relay') {
+      return (
+        <View style={styles.activeContainer}>
+          {currentLocation && hasActiveBaton && (
+            <View style={styles.mapContainer}>
+              <MapView
+                style={styles.map}
+                provider={PROVIDER_GOOGLE}
+                region={{
+                  latitude: currentLocation.coords.latitude,
+                  longitude: currentLocation.coords.longitude,
+                  latitudeDelta: 0.01,
+                  longitudeDelta: 0.01,
+                }}
+                showsUserLocation={true}
+                showsMyLocationButton={false}
+              >
+                <Marker
+                  coordinate={{
+                    latitude: currentLocation.coords.latitude,
+                    longitude: currentLocation.coords.longitude,
+                  }}
+                  pinColor={colors.primary[500]}
+                />
+              </MapView>
+            </View>
+          )}
+
+          {hasActiveBaton ? (
+            <View style={styles.myStatsCard}>
+              <View style={styles.batonIndicator}>
+                <Ionicons name="flag" size={24} color={colors.primary[500]} />
+                <Text style={styles.batonText}>YOU HAVE THE BATON</Text>
+              </View>
+              <Text style={styles.myStatsLabel}>YOUR LEG PROGRESS</Text>
+              <Text style={styles.myStatsDistance}>
+                {myDistance.toFixed(2)} / {relay?.distancePerLeg} KM
+              </Text>
+              <View style={styles.progressBar}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    { width: `${Math.min((myDistance / (relay?.distancePerLeg || 1)) * 100, 100)}%` },
+                  ]}
+                />
+              </View>
+            </View>
+          ) : (
+            <Card style={styles.waitingCard}>
+              <Ionicons name="time-outline" size={48} color={colors.text.tertiary} />
+              <Text style={styles.waitingText}>WAITING FOR YOUR TURN</Text>
+              <Text style={styles.waitingSubtext}>Watch your team's progress below</Text>
+            </Card>
+          )}
+
+          <Card style={styles.leaderboardCard}>
+            <Text style={styles.leaderboardTitle}>TEAM STANDINGS</Text>
+            <ScrollView style={styles.leaderboardScroll}>
+              {relay?.teams.map((team, index) => (
+                <View key={team.id} style={styles.teamStandingItem}>
+                  <View style={[styles.teamColorDot, { backgroundColor: team.color }]} />
+                  <View style={styles.teamStandingInfo}>
+                    <Text style={styles.teamStandingName}>{team.name}</Text>
+                    <Text style={styles.teamStandingStats}>
+                      Leg {team.currentLeg}/{relay.legsPerTeam} · {team.totalDistance.toFixed(2)}km
+                      {team.finished && ' ✓'}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+          </Card>
+
+          <TouchableOpacity style={styles.endButton} onPress={handleEndRace}>
+            <Text style={styles.endButtonText}>END</Text>
+          </TouchableOpacity>
+        </View>
+      )
+    }
+
+    // Solo mode
+    return (
+      <View style={styles.activeContainer}>
+        {currentLocation && (
+          <View style={styles.mapContainer}>
+            <MapView
+              style={styles.map}
+              provider={PROVIDER_GOOGLE}
+              region={{
                 latitude: currentLocation.coords.latitude,
                 longitude: currentLocation.coords.longitude,
+                latitudeDelta: 0.01,
+                longitudeDelta: 0.01,
               }}
-              pinColor={colors.primary[500]}
+              showsUserLocation={true}
+              showsMyLocationButton={false}
+            >
+              <Marker
+                coordinate={{
+                  latitude: currentLocation.coords.latitude,
+                  longitude: currentLocation.coords.longitude,
+                }}
+                pinColor={colors.primary[500]}
+              />
+            </MapView>
+          </View>
+        )}
+
+        <View style={styles.myStatsCard}>
+          <Text style={styles.myStatsLabel}>PROGRESS</Text>
+          <Text style={styles.myStatsDistance}>
+            {myDistance.toFixed(2)} / {race?.targetDistance}
+          </Text>
+          <View style={styles.progressBar}>
+            <View
+              style={[
+                styles.progressFill,
+                { width: `${Math.min((myDistance / (race?.targetDistance || 1)) * 100, 100)}%` },
+              ]}
             />
-          </MapView>
+          </View>
+          <Text style={styles.myStatsPace}>
+            {myPace > 0 ? myPace.toFixed(2) : '--'} MIN/KM
+          </Text>
         </View>
-      )}
 
-      <View style={styles.myStatsCard}>
-        <Text style={styles.myStatsLabel}>PROGRESS</Text>
-        <Text style={styles.myStatsDistance}>
-          {myDistance.toFixed(2)} / {race?.targetDistance}
-        </Text>
-        <View style={styles.progressBar}>
-          <View
-            style={[
-              styles.progressFill,
-              { width: `${Math.min((myDistance / (race?.targetDistance || 1)) * 100, 100)}%` },
-            ]}
-          />
-        </View>
-        <Text style={styles.myStatsPace}>
-          {myPace > 0 ? myPace.toFixed(2) : '--'} MIN/KM
-        </Text>
+        <Card style={styles.leaderboardCard}>
+          <Text style={styles.leaderboardTitle}>LIVE RANKINGS</Text>
+          <ScrollView style={styles.leaderboardScroll}>
+            {leaderboard.map((entry, index) => (
+              <View key={index} style={styles.leaderboardItem}>
+                <Text style={styles.leaderboardRank}>{index + 1}</Text>
+                <View style={styles.leaderboardInfo}>
+                  <Text style={styles.leaderboardName}>{entry.username}</Text>
+                  <Text style={styles.leaderboardStats}>
+                    {entry.distance.toFixed(2)}km · {entry.progress.toFixed(0)}%
+                    {entry.finished && ' ✓'}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+        </Card>
+
+        <TouchableOpacity style={styles.endButton} onPress={handleEndRace}>
+          <Text style={styles.endButtonText}>END</Text>
+        </TouchableOpacity>
       </View>
+    )
+  }
 
-      <Card style={styles.leaderboardCard}>
-        <Text style={styles.leaderboardTitle}>LIVE RANKINGS</Text>
-        <ScrollView style={styles.leaderboardScroll}>
-          {leaderboard.map((entry, index) => (
-            <View key={index} style={styles.leaderboardItem}>
-              <Text style={styles.leaderboardRank}>{index + 1}</Text>
-              <View style={styles.leaderboardInfo}>
-                <Text style={styles.leaderboardName}>{entry.username}</Text>
-                <Text style={styles.leaderboardStats}>
-                  {entry.distance.toFixed(2)}km · {entry.progress.toFixed(0)}%
-                  {entry.finished && ' ✓'}
-                </Text>
-              </View>
+  const renderResultsScreen = () => {
+    if (raceMode === 'relay') {
+      return (
+        <ScrollView contentContainerStyle={styles.scrollContainer}>
+          <Card style={styles.resultsCard}>
+            <Text style={styles.resultsTitle}>RELAY RESULTS</Text>
+            <View style={styles.resultsList}>
+              {relayResults.map((team, index) => (
+                <View key={team.id} style={styles.relayResultItem}>
+                  <View style={styles.relayResultHeader}>
+                    <View style={[styles.teamColorDot, { backgroundColor: team.color }]} />
+                    <Text style={styles.relayResultRank}>#{index + 1}</Text>
+                    <Text style={styles.relayResultTeamName}>{team.name}</Text>
+                  </View>
+                  <Text style={styles.relayResultTime}>
+                    {team.finished && team.finishTime
+                      ? formatTime(team.finishTime)
+                      : `${team.totalDistance.toFixed(2)}km`}
+                  </Text>
+                  <View style={styles.relayMembersList}>
+                    {team.members.map((member) => (
+                      <View key={member.id} style={styles.relayMemberItem}>
+                        <Text style={styles.relayMemberLeg}>Leg {member.legOrder}</Text>
+                        <Text style={styles.relayMemberName}>{member.username}</Text>
+                        <Text style={styles.relayMemberTime}>
+                          {member.completed && member.finishTime
+                            ? formatTime(member.finishTime)
+                            : '--'}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ))}
             </View>
-          ))}
+          </Card>
+
+          <TouchableOpacity style={styles.actionButton} onPress={handleLeaveRace}>
+            <Text style={styles.actionButtonText}>DONE</Text>
+          </TouchableOpacity>
         </ScrollView>
-      </Card>
+      )
+    }
 
-      <TouchableOpacity style={styles.endButton} onPress={handleEndRace}>
-        <Text style={styles.endButtonText}>END</Text>
-      </TouchableOpacity>
-    </View>
-  )
-
-  const renderResultsScreen = () => (
-    <View style={styles.centerContainer}>
-      <Card style={styles.resultsCard}>
-        <Text style={styles.resultsTitle}>RESULTS</Text>
-        <View style={styles.resultsList}>
-          {results.map((participant, index) => (
-            <View key={participant.id} style={styles.resultItem}>
-              <Text style={styles.resultRank}>{index + 1}</Text>
-              <View style={styles.resultInfo}>
-                <Text style={styles.resultName}>{participant.username}</Text>
-                <Text style={styles.resultTime}>
-                  {participant.finished && participant.finishTime
-                    ? formatTime(participant.finishTime)
-                    : `${participant.distance.toFixed(2)}km`}
-                </Text>
+    // Solo mode
+    return (
+      <ScrollView contentContainerStyle={styles.scrollContainer}>
+        <Card style={styles.resultsCard}>
+          <Text style={styles.resultsTitle}>RESULTS</Text>
+          <View style={styles.resultsList}>
+            {results.map((participant, index) => (
+              <View key={participant.id} style={styles.resultItem}>
+                <Text style={styles.resultRank}>{index + 1}</Text>
+                <View style={styles.resultInfo}>
+                  <Text style={styles.resultName}>{participant.username}</Text>
+                  <Text style={styles.resultTime}>
+                    {participant.finished && participant.finishTime
+                      ? formatTime(participant.finishTime)
+                      : `${participant.distance.toFixed(2)}km`}
+                  </Text>
+                </View>
               </View>
-            </View>
-          ))}
-        </View>
-      </Card>
+            ))}
+          </View>
+        </Card>
 
-      <TouchableOpacity style={styles.actionButton} onPress={handleLeaveRace}>
-        <Text style={styles.actionButtonText}>DONE</Text>
-      </TouchableOpacity>
-    </View>
-  )
+        <TouchableOpacity style={styles.actionButton} onPress={handleLeaveRace}>
+          <Text style={styles.actionButtonText}>DONE</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    )
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={[]}>
@@ -538,6 +1035,36 @@ const styles = StyleSheet.create({
   // Buttons
   buttonGroup: {
     gap: spacing.md,
+  },
+  modeSelector: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginBottom: spacing.xxxl,
+    width: '100%',
+  },
+  modeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.background.secondary,
+    paddingVertical: spacing.lg,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+  },
+  modeButtonActive: {
+    backgroundColor: colors.primary[500],
+    borderColor: colors.primary[500],
+  },
+  modeButtonText: {
+    ...typography.labelSmall,
+    color: colors.text.tertiary,
+    letterSpacing: 1.5,
+  },
+  modeButtonTextActive: {
+    color: colors.background.primary,
   },
   primaryButton: { 
     backgroundColor: colors.primary[500],
@@ -664,6 +1191,78 @@ const styles = StyleSheet.create({
   distanceButtonTextActive: { 
     color: colors.background.primary,
   },
+  teamsContainer: {
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  teamCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background.secondary,
+    padding: spacing.lg,
+    borderRadius: 4,
+    borderWidth: 2,
+    gap: spacing.md,
+  },
+  teamCardActive: {
+    backgroundColor: colors.background.tertiary,
+  },
+  teamColorDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  teamName: {
+    ...typography.body,
+    color: colors.text.primary,
+    flex: 1,
+    letterSpacing: 0.5,
+  },
+  teamMembers: {
+    ...typography.caption,
+    color: colors.text.tertiary,
+    letterSpacing: 0.5,
+  },
+  teamsLobbyContainer: {
+    gap: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  teamLobbyCard: {
+    paddingVertical: spacing.lg,
+  },
+  teamLobbyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  teamLobbyName: {
+    ...typography.h4,
+    color: colors.text.primary,
+    flex: 1,
+    letterSpacing: 1,
+    fontWeight: '400',
+  },
+  teamMembersList: {
+    gap: spacing.xs,
+  },
+  teamMemberItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
+    gap: spacing.md,
+  },
+  legNumber: {
+    ...typography.labelSmall,
+    color: colors.text.tertiary,
+    width: 50,
+    letterSpacing: 1,
+  },
+  memberName: {
+    ...typography.bodySmall,
+    color: colors.text.secondary,
+    letterSpacing: 0.5,
+  },
   
   // Cards
   codeCard: { 
@@ -786,6 +1385,117 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.text.tertiary,
     letterSpacing: 1,
+  },
+  batonIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.background.primary,
+    borderRadius: 4,
+  },
+  batonText: {
+    ...typography.labelSmall,
+    color: colors.primary[500],
+    letterSpacing: 1.5,
+  },
+  waitingCard: {
+    paddingVertical: spacing.xxxl,
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  waitingText: {
+    ...typography.h4,
+    color: colors.text.secondary,
+    marginTop: spacing.lg,
+    marginBottom: spacing.xs,
+    letterSpacing: 1,
+    fontWeight: '400',
+  },
+  waitingSubtext: {
+    ...typography.caption,
+    color: colors.text.tertiary,
+    letterSpacing: 0.5,
+  },
+  teamStandingItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.subtle,
+    gap: spacing.md,
+  },
+  teamStandingInfo: {
+    flex: 1,
+  },
+  teamStandingName: {
+    ...typography.body,
+    color: colors.text.primary,
+    marginBottom: spacing.xs,
+    letterSpacing: 0.5,
+  },
+  teamStandingStats: {
+    ...typography.caption,
+    color: colors.text.tertiary,
+    letterSpacing: 0.5,
+  },
+  relayResultItem: {
+    paddingVertical: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.subtle,
+  },
+  relayResultHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  relayResultRank: {
+    ...typography.h3,
+    color: colors.text.tertiary,
+    fontWeight: '300',
+  },
+  relayResultTeamName: {
+    ...typography.h3,
+    color: colors.text.primary,
+    flex: 1,
+    letterSpacing: 1,
+    fontWeight: '400',
+  },
+  relayResultTime: {
+    ...typography.h4,
+    color: colors.text.secondary,
+    marginBottom: spacing.md,
+    letterSpacing: 0.5,
+  },
+  relayMembersList: {
+    gap: spacing.xs,
+    paddingLeft: spacing.xl,
+  },
+  relayMemberItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
+    gap: spacing.md,
+  },
+  relayMemberLeg: {
+    ...typography.caption,
+    color: colors.text.tertiary,
+    width: 50,
+    letterSpacing: 0.5,
+  },
+  relayMemberName: {
+    ...typography.bodySmall,
+    color: colors.text.secondary,
+    flex: 1,
+    letterSpacing: 0.5,
+  },
+  relayMemberTime: {
+    ...typography.bodySmall,
+    color: colors.text.tertiary,
+    letterSpacing: 0.5,
   },
   leaderboardCard: { 
     flex: 1,
