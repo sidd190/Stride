@@ -13,24 +13,17 @@ export default function TabLayout() {
                     backgroundColor: colors.background.secondary,
                     borderTopWidth: 1,
                     borderTopColor: colors.border.subtle,
-                    height: Platform.OS === "ios" ? 88 : 100,
-                    paddingTop: 12,
+                    height: Platform.OS === "ios" ? 88 : 70,
+                    paddingTop: 8,
+                    paddingBottom: Platform.OS === "ios" ? 32 : 8,
                 },
                 tabBarLabelStyle: {
-                    fontSize: 11,
-                    fontWeight: "600",
+                    fontSize: 10,
+                    fontWeight: "500",
+                    letterSpacing: 1,
+                    textTransform: "uppercase",
                 },
-                headerShown: true,
-                headerStyle: {
-                    backgroundColor: colors.background.secondary,
-                    borderBottomWidth: 1,
-                    borderBottomColor: colors.border.subtle,
-                },
-                headerTintColor: colors.text.primary,
-                headerTitleStyle: {
-                    fontWeight: "bold",
-                    fontSize: 18,
-                },
+                headerShown: false,
             }}
         >
             <Tabs.Screen 
@@ -40,7 +33,7 @@ export default function TabLayout() {
                     tabBarIcon: ({ color, size, focused }) => (
                         <Ionicons 
                             name={focused ? "home" : "home-outline"} 
-                            size={size} 
+                            size={20} 
                             color={color} 
                         />
                     ),
@@ -53,7 +46,7 @@ export default function TabLayout() {
                     tabBarIcon: ({ color, size, focused }) => (
                         <Ionicons 
                             name={focused ? "flag" : "flag-outline"} 
-                            size={size} 
+                            size={20} 
                             color={color} 
                         />
                     ),
@@ -66,7 +59,7 @@ export default function TabLayout() {
                     tabBarIcon: ({ color, size, focused }) => (
                         <Ionicons 
                             name={focused ? "radio-button-on" : "radio-button-off"} 
-                            size={size + 4} 
+                            size={24} 
                             color={color} 
                         />
                     ),
@@ -75,11 +68,11 @@ export default function TabLayout() {
             <Tabs.Screen 
                 name="leaderboard" 
                 options={{ 
-                    title: "Leaderboard",
+                    title: "Ranks",
                     tabBarIcon: ({ color, size, focused }) => (
                         <Ionicons 
                             name={focused ? "trophy" : "trophy-outline"} 
-                            size={size} 
+                            size={20} 
                             color={color} 
                         />
                     ),
@@ -92,7 +85,7 @@ export default function TabLayout() {
                     tabBarIcon: ({ color, size, focused }) => (
                         <Ionicons 
                             name={focused ? "person" : "person-outline"} 
-                            size={size} 
+                            size={20} 
                             color={color} 
                         />
                     ),

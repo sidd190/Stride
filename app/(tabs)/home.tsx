@@ -14,88 +14,46 @@ export default function Home() {
   return (
     <SafeAreaView style={styles.container} edges={[]}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* Hero Section */}
-        <View style={styles.hero}>
-          <Text style={styles.heroTitle}>Ready to Compete?</Text>
-          <Text style={styles.heroSubtitle}>Join leagues, track workouts, dominate leaderboards</Text>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>OVERVIEW</Text>
         </View>
 
-        {/* Wallet Status */}
+        {/* Wallet */}
         {account && (
-          <Card variant="glow" style={styles.walletCard}>
-            <View style={styles.walletHeader}>
-              <Ionicons name="wallet" size={24} color={colors.primary[500]} />
-              <Badge label="CONNECTED" variant="success" size="sm" />
-            </View>
-            <Text style={styles.walletAddress}>{ellipsify(account.address.toString(), 12)}</Text>
-          </Card>
+          <View style={styles.walletSection}>
+            <Card style={styles.walletCard}>
+              <Text style={styles.walletLabel}>CONNECTED</Text>
+              <Text style={styles.walletAddress}>{ellipsify(account.address.toString(), 12)}</Text>
+            </Card>
+          </View>
         )}
 
-        {/* Quick Stats */}
-        <View style={styles.statsGrid}>
-          <Card style={styles.statCard}>
-            <Ionicons name="trophy" size={32} color={colors.gold[500]} />
-            <Text style={styles.statValue}>0</Text>
-            <Text style={styles.statLabel}>Races Won</Text>
-          </Card>
-          
-          <Card style={styles.statCard}>
-            <Ionicons name="flame" size={32} color={colors.secondary[500]} />
-            <Text style={styles.statValue}>0</Text>
-            <Text style={styles.statLabel}>Total Points</Text>
-          </Card>
-        </View>
+        {/* Stats */}
+        <View style={styles.statsContainer}>
+          <View style={styles.statsRow}>
+            <Card style={styles.statCard}>
+              <Text style={styles.statLabel}>WINS</Text>
+              <Text style={styles.statValue}>0</Text>
+            </Card>
+            
+            <Card style={styles.statCard}>
+              <Text style={styles.statLabel}>POINTS</Text>
+              <Text style={styles.statValue}>0</Text>
+            </Card>
+          </View>
 
-        <View style={styles.statsGrid}>
-          <Card style={styles.statCard}>
-            <Ionicons name="fitness" size={32} color={colors.accent[500]} />
-            <Text style={styles.statValue}>0</Text>
-            <Text style={styles.statLabel}>Workouts</Text>
-          </Card>
-          
-          <Card style={styles.statCard}>
-            <Ionicons name="people" size={32} color={colors.primary[500]} />
-            <Text style={styles.statValue}>0</Text>
-            <Text style={styles.statLabel}>Leagues</Text>
-          </Card>
-        </View>
-
-        {/* Action Cards */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Quick Actions</Text>
-          
-          <Card variant="elevated" style={styles.actionCard}>
-            <View style={styles.actionIcon}>
-              <Ionicons name="play-circle" size={40} color={colors.secondary[500]} />
-            </View>
-            <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>Start Workout</Text>
-              <Text style={styles.actionDescription}>Track your run and earn points</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color={colors.text.tertiary} />
-          </Card>
-
-          <Card variant="elevated" style={styles.actionCard}>
-            <View style={styles.actionIcon}>
-              <Ionicons name="flag" size={40} color={colors.accent[500]} />
-            </View>
-            <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>Join a Race</Text>
-              <Text style={styles.actionDescription}>Compete in real-time challenges</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color={colors.text.tertiary} />
-          </Card>
-
-          <Card variant="elevated" style={styles.actionCard}>
-            <View style={styles.actionIcon}>
-              <Ionicons name="trophy" size={40} color={colors.gold[500]} />
-            </View>
-            <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>View Leaderboard</Text>
-              <Text style={styles.actionDescription}>See where you rank</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color={colors.text.tertiary} />
-          </Card>
+          <View style={styles.statsRow}>
+            <Card style={styles.statCard}>
+              <Text style={styles.statLabel}>WORKOUTS</Text>
+              <Text style={styles.statValue}>0</Text>
+            </Card>
+            
+            <Card style={styles.statCard}>
+              <Text style={styles.statLabel}>LEAGUES</Text>
+              <Text style={styles.statValue}>0</Text>
+            </Card>
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -109,85 +67,64 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
-    paddingHorizontal: spacing.md,
   },
-  hero: {
-    paddingVertical: spacing.xl,
-    alignItems: 'center',
+  header: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.subtle,
   },
-  heroTitle: {
-    ...typography.h1,
+  headerTitle: {
+    ...typography.h3,
     color: colors.text.primary,
-    marginBottom: spacing.xs,
-    textAlign: 'center',
+    letterSpacing: 2,
+    fontWeight: '300',
   },
-  heroSubtitle: {
-    ...typography.body,
-    color: colors.text.secondary,
-    textAlign: 'center',
+  walletSection: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
   },
   walletCard: {
-    marginBottom: spacing.lg,
-  },
-  walletHeader: {
-    flexDirection: 'row',
+    paddingVertical: spacing.lg,
     alignItems: 'center',
-    justifyContent: 'space-between',
+  },
+  walletLabel: {
+    ...typography.labelSmall,
+    color: colors.text.tertiary,
     marginBottom: spacing.sm,
+    letterSpacing: 1.5,
   },
   walletAddress: {
     ...typography.bodySmall,
-    color: colors.text.secondary,
+    color: colors.text.primary,
     fontFamily: 'monospace',
+    letterSpacing: 0.5,
   },
-  statsGrid: {
+  statsContainer: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.xxxl,
+    gap: spacing.md,
+  },
+  statsRow: {
     flexDirection: 'row',
     gap: spacing.md,
-    marginBottom: spacing.md,
   },
   statCard: {
     flex: 1,
+    paddingVertical: spacing.xl,
     alignItems: 'center',
-    paddingVertical: spacing.lg,
-  },
-  statValue: {
-    ...typography.h2,
-    color: colors.text.primary,
-    marginTop: spacing.sm,
   },
   statLabel: {
-    ...typography.caption,
+    ...typography.labelSmall,
     color: colors.text.tertiary,
-    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
+    letterSpacing: 1.5,
   },
-  section: {
-    marginTop: spacing.md,
-    marginBottom: spacing.xl,
-  },
-  sectionTitle: {
-    ...typography.h3,
+  statValue: {
+    ...typography.h1,
     color: colors.text.primary,
-    marginBottom: spacing.md,
-  },
-  actionCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-    paddingVertical: spacing.lg,
-  },
-  actionIcon: {
-    marginRight: spacing.md,
-  },
-  actionContent: {
-    flex: 1,
-  },
-  actionTitle: {
-    ...typography.h4,
-    color: colors.text.primary,
-    marginBottom: spacing.xs,
-  },
-  actionDescription: {
-    ...typography.bodySmall,
-    color: colors.text.secondary,
+    fontWeight: '300',
   },
 })

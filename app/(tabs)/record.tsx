@@ -5,6 +5,8 @@ import * as Location from 'expo-location'
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps'
 import { useMobileWallet } from '@wallet-ui/react-native-web3js'
 import { saveWorkout } from '@/services/api'
+import { colors, spacing, typography } from '@/constants/theme'
+import { Ionicons } from '@expo/vector-icons'
 
 const __DEV__ = process.env.NODE_ENV === 'development'
 
@@ -16,21 +18,21 @@ export default function Record() {
   const [workoutStarted, setWorkoutStarted] = useState(false)
   const [workoutFinished, setWorkoutFinished] = useState(false)
   const [location, setLocation] = useState<Location.LocationObject | null>(null)
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
-  const [distance, setDistance] = useState(0) // in meters
+  const [distance, setDistance] = useState(0)
   const [lastPosition, setLastPosition] = useState<{ latitude: number; longitude: number } | null>(null)
   const [locationSubscription, setLocationSubscription] = useState<Location.LocationSubscription | null>(null)
   const [saving, setSaving] = useState(false)
   const [routeCoordinates, setRouteCoordinates] = useState<{ latitude: number; longitude: number }[]>([])
-  const [isTestMode, setIsTestMode] = useState(false)
+  
+  const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(null)
+  const lastPositionRef = useRef<{ latitude: number; longitude: number } | null>(null)
+  const raceStartTime = useRef<number>(0)
+  const distanceAccumulator = useRef<number>(0)
 
   useEffect(() => {
     async function getCurrentLocation() {
       let { status } = await Location.requestForegroundPermissionsAsync()
-      if (status !== 'granted') {
-        setErrorMsg('Permission to access location was denied')
-        return
-      }
+      if (status !== 'granted') return
 
       let location = await Location.getCurrentPositionAsync({ accuracy: 1 })
       if (!location) return null
@@ -54,7 +56,6 @@ export default function Record() {
     }
   }, [running])
 
-  // Start/stop location tracking based on running state
   useEffect(() => {
     let subscription: Location.LocationSubscription | null = null
 
@@ -74,23 +75,23 @@ export default function Record() {
               longitude: newLocation.coords.longitude,
             }
 
-            // Add to route coordinates
             setRouteCoordinates((prev) => [...prev, newCoord])
 
-            if (lastPosition) {
+            if (lastPositionRef.current) {
               const distanceDelta = calculateDistance(
-                lastPosition.latitude,
-                lastPosition.longitude,
+                lastPositionRef.current.latitude,
+                lastPositionRef.current.longitude,
                 newCoord.latitude,
                 newCoord.longitude,
               )
-              setDistance((prev) => prev + distanceDelta)
+              distanceAccumulator.current += distanceDelta
+              setDistance(distanceAccumulator.current)
             }
 
-            setLastPosition(newCoord)
+            lastPositionRef.current = newCoord
           },
         )
-        setLocationSubscription(subscription)
+        locationSubscriptionRef.current = subscription
       }
     }
 
@@ -105,9 +106,8 @@ export default function Record() {
     }
   }, [running, workoutStarted])
 
-  // Crazy Haversine formula for calculating distance
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-    const R = 6371e3 // Earth's radius in meters
+    const R = 6371e3
     const φ1 = (lat1 * Math.PI) / 180
     const φ2 = (lat2 * Math.PI) / 180
     const Δφ = ((lat2 - lat1) * Math.PI) / 180
@@ -116,14 +116,7 @@ export default function Record() {
     const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2)
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 
-    return R * c // Distance in meters
-  }
-
-  let text = 'Waiting...'
-  if (errorMsg) {
-    text = errorMsg
-  } else if (location) {
-    text = JSON.stringify(location)
+    return R * c
   }
 
   const formatTime = (seconds: number) => {
@@ -137,66 +130,18 @@ export default function Record() {
     setWorkoutStarted(true)
     setRunning(true)
     setWorkoutFinished(false)
-    setIsTestMode(false)
     setRouteCoordinates([])
-    // Set initial position when starting
+    raceStartTime.current = Date.now()
+    distanceAccumulator.current = 0
+    
     if (location) {
       const initialCoord = {
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
       }
-      setLastPosition(initialCoord)
+      lastPositionRef.current = initialCoord
       setRouteCoordinates([initialCoord])
     }
-  }
-
-  // Test mode - simulate a workout
-  const handleTestWorkout = () => {
-    setIsTestMode(true)
-    setWorkoutStarted(true)
-    setWorkoutFinished(false)
-
-    // Generate fake route (simulate 2km run in a loop)
-    const startLat = location?.coords.latitude || 28.6139
-    const startLng = location?.coords.longitude || 77.209
-
-    const fakeRoute: { latitude: number; longitude: number }[] = []
-    const numPoints = 80
-    const radius = 0.01 // roughly 1km radius
-
-    for (let i = 0; i < numPoints; i++) {
-      const angle = (i / numPoints) * 2 * Math.PI
-      const lat = startLat + radius * Math.cos(angle) + (Math.random() - 0.5) * 0.001
-      const lng = startLng + radius * Math.sin(angle) + (Math.random() - 0.5) * 0.001
-      fakeRoute.push({ latitude: lat, longitude: lng })
-    }
-
-    setRouteCoordinates(fakeRoute)
-
-    // Calculate fake distance
-    let totalDistance = 0
-    for (let i = 1; i < fakeRoute.length; i++) {
-      totalDistance += calculateDistance(
-        fakeRoute[i - 1].latitude,
-        fakeRoute[i - 1].longitude,
-        fakeRoute[i].latitude,
-        fakeRoute[i].longitude,
-      )
-    }
-
-    setDistance(totalDistance)
-    setTimer(720) // 12 minutes
-    setWorkoutFinished(true)
-
-    // Fit map to route
-    setTimeout(() => {
-      if (mapRef.current && fakeRoute.length > 0) {
-        mapRef.current.fitToCoordinates(fakeRoute, {
-          edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
-          animated: true,
-        })
-      }
-    }, 500)
   }
 
   const handlePause = () => {
@@ -210,13 +155,12 @@ export default function Record() {
   const handleFinish = () => {
     setRunning(false)
     setWorkoutFinished(true)
-    // Stop location tracking
-    if (locationSubscription) {
-      locationSubscription.remove()
-      setLocationSubscription(null)
+    
+    if (locationSubscriptionRef.current) {
+      locationSubscriptionRef.current.remove()
+      locationSubscriptionRef.current = null
     }
 
-    // Fit map to show full route
     if (mapRef.current && routeCoordinates.length > 1) {
       setTimeout(() => {
         mapRef.current?.fitToCoordinates(routeCoordinates, {
@@ -233,12 +177,13 @@ export default function Record() {
     setWorkoutStarted(false)
     setWorkoutFinished(false)
     setDistance(0)
-    setLastPosition(null)
+    lastPositionRef.current = null
     setRouteCoordinates([])
-    setIsTestMode(false)
-    if (locationSubscription) {
-      locationSubscription.remove()
-      setLocationSubscription(null)
+    distanceAccumulator.current = 0
+    
+    if (locationSubscriptionRef.current) {
+      locationSubscriptionRef.current.remove()
+      locationSubscriptionRef.current = null
     }
   }
 
@@ -257,33 +202,22 @@ export default function Record() {
         wallet: account.address.toString(),
         duration: timer,
         distance: distanceKm,
-        gpsCoordinates: routeCoordinates, // Send GPS coordinates for NFT
+        gpsCoordinates: routeCoordinates,
       }
 
       const result = await saveWorkout(workoutData)
 
-      // Show success message with NFT info
       const nftMessage = result.workout.nftMinted 
-        ? `\n\n NFT Minted!\nView on Explorer: ${result.workout.nftMintAddress?.slice(0, 8)}...`
+        ? `\n\nNFT minted: ${result.workout.nftMintAddress?.slice(0, 8)}...`
         : '';
 
       Alert.alert(
-        'Workout Saved!',
-        `Great job! You earned ${result.workout.points} points!${nftMessage}\n\nDuration: ${formatTime(timer)}\nDistance: ${distanceKm.toFixed(2)} km`,
-        [
-          {
-            text: 'OK',
-            onPress: handleReset,
-          },
-        ],
+        'Workout Saved',
+        `${result.workout.points} points earned${nftMessage}`,
+        [{ text: 'OK', onPress: handleReset }],
       )
     } catch (error: any) {
-      console.error('Failed to save workout:', error)
-
-      // Show specific error message from backend
-      const errorMessage = error.message || 'Failed to save workout. Please try again.'
-
-      Alert.alert('Save Failed', errorMessage, [{ text: 'OK' }])
+      Alert.alert('Save Failed', error.message || 'Failed to save workout')
     } finally {
       setSaving(false)
     }
@@ -302,8 +236,12 @@ export default function Record() {
   return (
     <SafeAreaView style={styles.container} edges={[]}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} bounces={false}>
-        <Text style={styles.title}>Track Workout</Text>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>RECORD</Text>
+        </View>
 
+        {/* Map */}
         <View style={[styles.mapContainer, workoutFinished && styles.mapContainerLarge]}>
           <MapView
             ref={mapRef}
@@ -316,123 +254,92 @@ export default function Record() {
               longitudeDelta: 0.01,
             }}
             showsUserLocation={!workoutFinished}
-            showsMyLocationButton={!workoutFinished}
+            showsMyLocationButton={false}
           >
-            {/* Draw the route */}
             {routeCoordinates.length > 1 && (
               <>
-                {/* Shadow/border effect */}
                 <Polyline
                   coordinates={routeCoordinates}
-                  strokeColor="#611d72ff"
-                  strokeWidth={8}
-                  lineJoin="round"
-                  lineCap="round"
-                />
-                {/* Main route line */}
-                <Polyline
-                  coordinates={routeCoordinates}
-                  strokeColor="#8c00ffff"
-                  strokeWidth={5}
+                  strokeColor={colors.primary[500]}
+                  strokeWidth={4}
                   lineJoin="round"
                   lineCap="round"
                 />
               </>
             )}
 
-            {/* Start marker */}
             {routeCoordinates.length > 0 && (
-              <Marker coordinate={routeCoordinates[0]} title="Start" pinColor="#10b981" />
+              <Marker coordinate={routeCoordinates[0]} pinColor={colors.secondary[500]} />
             )}
 
-            {/* End marker */}
             {workoutFinished && routeCoordinates.length > 1 && (
-              <Marker coordinate={routeCoordinates[routeCoordinates.length - 1]} title="Finish" pinColor="#ef4444" />
+              <Marker coordinate={routeCoordinates[routeCoordinates.length - 1]} pinColor={colors.error} />
             )}
           </MapView>
-
-          {/* Stats overlay on map when finished */}
-          {workoutFinished && (
-            <View style={styles.mapStatsOverlay}>
-              <Text style={styles.mapStatsText}>
-                {formatTime(timer)} • {(distance / 1000).toFixed(2)}km
-              </Text>
-            </View>
-          )}
         </View>
 
         {!workoutStarted ? (
           <View style={styles.startContainer}>
-            <Text style={styles.subtitle}>Ready to start your workout?</Text>
-            <Text style={styles.description}>Track your activity and earn rewards</Text>
             <TouchableOpacity style={styles.startButton} onPress={handleStart}>
-              <Text style={styles.startButtonText}>Start Workout</Text>
+              <Ionicons name="play" size={32} color={colors.background.primary} />
             </TouchableOpacity>
-
-            {__DEV__ && (
-              <TouchableOpacity style={styles.testButton} onPress={handleTestWorkout}>
-                <Text style={styles.testButtonText}> Test Workout (Dev Only)</Text>
-              </TouchableOpacity>
-            )}
+            <Text style={styles.startLabel}>START</Text>
           </View>
         ) : (
           <View style={styles.workoutContainer}>
+            {/* Timer */}
             <View style={styles.timerContainer}>
-              <Text style={styles.timerLabel}>Duration</Text>
               <Text style={styles.timer}>{formatTime(timer)}</Text>
             </View>
 
+            {/* Stats */}
             <View style={styles.statsContainer}>
-              <View style={styles.statCard}>
-                <Text style={styles.statLabel}>Distance</Text>
-                <Text style={styles.statValue}>{(distance / 1000).toFixed(2)} km</Text>
-                <Text style={styles.statSubtext}>Total distance</Text>
+              <View style={styles.statItem}>
+                <Text style={styles.statLabel}>DISTANCE</Text>
+                <Text style={styles.statValue}>{(distance / 1000).toFixed(2)}</Text>
+                <Text style={styles.statUnit}>km</Text>
               </View>
-              <View style={styles.statCard}>
-                <Text style={styles.statLabel}>Pace</Text>
+              <View style={styles.statDivider} />
+              <View style={styles.statItem}>
+                <Text style={styles.statLabel}>PACE</Text>
                 <Text style={styles.statValue}>{calculatePace()}</Text>
-                <Text style={styles.statSubtext}>min/km</Text>
+                <Text style={styles.statUnit}>min/km</Text>
               </View>
             </View>
 
+            {/* Controls */}
             {!workoutFinished && (
               <View style={styles.controls}>
                 {running ? (
-                  <TouchableOpacity style={styles.pauseButton} onPress={handlePause}>
-                    <Text style={styles.pauseButtonText}>Pause Workout</Text>
+                  <TouchableOpacity style={styles.controlButton} onPress={handlePause}>
+                    <Ionicons name="pause" size={24} color={colors.text.primary} />
                   </TouchableOpacity>
                 ) : (
                   <>
-                    <TouchableOpacity style={styles.resumeButton} onPress={handleResume}>
-                      <Text style={styles.resumeButtonText}>Resume</Text>
+                    <TouchableOpacity style={styles.controlButton} onPress={handleResume}>
+                      <Ionicons name="play" size={24} color={colors.text.primary} />
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.finishButton} onPress={handleFinish}>
-                      <Text style={styles.finishButtonText}>Finish</Text>
+                    <TouchableOpacity style={styles.controlButton} onPress={handleFinish}>
+                      <Ionicons name="stop" size={24} color={colors.text.primary} />
                     </TouchableOpacity>
                   </>
                 )}
               </View>
             )}
 
+            {/* Complete */}
             {workoutFinished && (
               <View style={styles.completeSection}>
-                <Text style={styles.completeSectionTitle}>Workout Summary</Text>
-                <View style={styles.summaryCard}>
-                  <Text style={styles.summaryText}>Duration: {formatTime(timer)}</Text>
-                  <Text style={styles.summaryText}>Distance: {(distance / 1000).toFixed(2)} km</Text>
-                  <Text style={styles.summaryText}>Pace: {calculatePace()} min/km</Text>
-                </View>
-
                 <TouchableOpacity
                   style={[styles.completeButton, saving && styles.buttonDisabled]}
                   onPress={handleCompleteWorkout}
                   disabled={saving}
                 >
-                  <Text style={styles.completeButtonText}>{saving ? 'Saving...' : 'Complete Workout'}</Text>
+                  <Text style={styles.completeButtonText}>{saving ? 'SAVING' : 'COMPLETE'}</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.resetButton} onPress={handleReset} disabled={saving}>
-                  <Text style={styles.resetButtonText}>Discard</Text>
+                <TouchableOpacity style={styles.discardButton} onPress={handleReset} disabled={saving}>
+                  <Text style={styles.discardButtonText}>DISCARD</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -446,16 +353,28 @@ export default function Record() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0a0a',
+    backgroundColor: colors.background.primary,
+  },
+  scrollContent: {
+    flexGrow: 1,
+  },
+  header: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.subtle,
+  },
+  headerTitle: {
+    ...typography.h3,
+    color: colors.text.primary,
+    letterSpacing: 2,
+    fontWeight: '300',
   },
   mapContainer: {
     width: '100%',
-    height: 250,
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
+    height: 300,
+    backgroundColor: colors.background.secondary,
   },
   mapContainerLarge: {
     height: 400,
@@ -464,274 +383,121 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  scrollContent: {
-    flexGrow: 1,
-    padding: 20,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: '800',
-    marginBottom: 24,
-    textAlign: 'center',
-    color: '#ffffff',
-  },
-  subtitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginBottom: 10,
-    textAlign: 'center',
-    color: '#ffffff',
-  },
-  description: {
-    fontSize: 16,
-    color: '#888888',
-    textAlign: 'center',
-    marginBottom: 40,
-  },
   startContainer: {
-    minHeight: 200,
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingVertical: spacing.xxxl,
   },
   startButton: {
-    backgroundColor: '#00ff88',
-    paddingVertical: 18,
-    paddingHorizontal: 60,
-    borderRadius: 16,
-    shadowColor: '#00ff88',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  startButtonText: {
-    color: '#0a0a0a',
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  testButton: {
-    marginTop: 15,
-    backgroundColor: '#2a2a2a',
-    paddingVertical: 12,
-    paddingHorizontal: 30,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#3a3a3a',
-  },
-  testButtonText: {
-    color: '#888888',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  mapStatsOverlay: {
-    position: 'absolute',
-    top: 10,
-    left: 10,
-    right: 10,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    padding: 12,
-    borderRadius: 8,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: colors.primary[500],
+    justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: spacing.lg,
   },
-  mapStatsText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
+  startLabel: {
+    ...typography.labelSmall,
+    color: colors.text.tertiary,
+    letterSpacing: 2,
   },
   workoutContainer: {
-    paddingBottom: 20,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.xxxl,
   },
   timerContainer: {
     alignItems: 'center',
-    marginVertical: 30,
-    padding: 30,
-    backgroundColor: '#1a1a1a',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
-  },
-  timerLabel: {
-    fontSize: 16,
-    color: '#888888',
-    marginBottom: 10,
-    fontWeight: '600',
+    paddingVertical: spacing.xxxl,
   },
   timer: {
-    fontSize: 56,
-    fontWeight: '800',
-    color: '#00ff88',
+    fontSize: 64,
+    fontWeight: '200',
+    color: colors.text.primary,
     fontVariant: ['tabular-nums'],
+    letterSpacing: 4,
   },
   statsContainer: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 30,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: '#1a1a1a',
-    padding: 16,
-    borderRadius: 16,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
+    justifyContent: 'center',
+    paddingVertical: spacing.xl,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: colors.border.subtle,
+    marginBottom: spacing.xl,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statDivider: {
+    width: 1,
+    height: 60,
+    backgroundColor: colors.border.subtle,
   },
   statLabel: {
-    fontSize: 14,
-    color: '#888888',
-    marginBottom: 8,
-    fontWeight: '600',
+    ...typography.labelSmall,
+    color: colors.text.tertiary,
+    marginBottom: spacing.sm,
+    letterSpacing: 1.5,
   },
   statValue: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#ffffff',
-    marginBottom: 4,
+    ...typography.h1,
+    color: colors.text.primary,
+    fontWeight: '300',
+    marginBottom: spacing.xs,
   },
-  statSubtext: {
-    fontSize: 12,
-    color: '#666666',
+  statUnit: {
+    ...typography.caption,
+    color: colors.text.tertiary,
+    letterSpacing: 1,
   },
   controls: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 20,
+    justifyContent: 'center',
+    gap: spacing.lg,
   },
-  pauseButton: {
-    flex: 1,
-    backgroundColor: '#ff9500',
-    paddingVertical: 16,
-    borderRadius: 16,
+  controlButton: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.background.secondary,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#ff9500',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  pauseButtonText: {
-    color: '#0a0a0a',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  resumeButton: {
-    flex: 1,
-    backgroundColor: '#00ff88',
-    paddingVertical: 16,
-    borderRadius: 16,
-    alignItems: 'center',
-    shadowColor: '#00ff88',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  resumeButtonText: {
-    color: '#0a0a0a',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  finishButton: {
-    flex: 1,
-    backgroundColor: '#00d4ff',
-    paddingVertical: 16,
-    borderRadius: 16,
-    alignItems: 'center',
-    shadowColor: '#00d4ff',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  finishButtonText: {
-    color: '#0a0a0a',
-    fontSize: 16,
-    fontWeight: '800',
   },
   completeSection: {
-    marginTop: 20,
-  },
-  completeSectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 12,
-    textAlign: 'center',
-    color: '#ffffff',
-  },
-  summaryCard: {
-    backgroundColor: '#1a1a1a',
-    padding: 20,
-    borderRadius: 16,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
-  },
-  summaryText: {
-    fontSize: 16,
-    color: '#ffffff',
-    marginBottom: 8,
+    gap: spacing.md,
   },
   completeButton: {
-    backgroundColor: '#00ff88',
-    paddingVertical: 16,
-    borderRadius: 16,
+    backgroundColor: colors.primary[500],
+    paddingVertical: spacing.lg,
+    borderRadius: 4,
     alignItems: 'center',
-    marginBottom: 12,
-    shadowColor: '#00ff88',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
   },
   completeButtonText: {
-    color: '#0a0a0a',
-    fontSize: 16,
-    fontWeight: '800',
+    ...typography.label,
+    color: colors.background.primary,
+    letterSpacing: 2,
   },
-  resetButton: {
-    backgroundColor: '#2a2a2a',
-    paddingVertical: 16,
-    borderRadius: 16,
+  discardButton: {
+    backgroundColor: colors.background.secondary,
+    paddingVertical: spacing.lg,
+    borderRadius: 4,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#3a3a3a',
+    borderColor: colors.border.default,
   },
-  resetButtonText: {
-    color: '#888888',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  error: {
-    color: '#ff4444',
-    textAlign: 'center',
-    marginVertical: 10,
-    fontSize: 14,
-  },
-  success: {
-    color: '#00ff88',
-    textAlign: 'center',
-    marginVertical: 10,
-    fontSize: 14,
-    fontWeight: '600',
+  discardButtonText: {
+    ...typography.label,
+    color: colors.text.tertiary,
+    letterSpacing: 2,
   },
   buttonDisabled: {
     opacity: 0.5,
-  },
-  mapStatsOverlay: {
-    position: 'absolute',
-    top: 10,
-    left: 10,
-    right: 10,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    padding: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
-  },
-  mapStatsText: {
-    color: '#00ff88',
-    fontSize: 16,
-    fontWeight: '800',
   },
 })

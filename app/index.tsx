@@ -9,6 +9,10 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { colors, spacing, typography } from '@/constants/theme'
 import { Ionicons } from '@expo/vector-icons'
+import { Tutorial } from '@/components/Tutorial'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+
+const TUTORIAL_COMPLETED_KEY = 'tutorial_completed'
 
 export default function WalletConnectScreen() {
   const { account, disconnect } = useMobileWallet()
@@ -16,6 +20,35 @@ export default function WalletConnectScreen() {
   const router = useRouter()
   const [authenticating, setAuthenticating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showTutorial, setShowTutorial] = useState(false)
+  const [checkingTutorial, setCheckingTutorial] = useState(true)
+
+  useEffect(() => {
+    checkTutorialStatus()
+  }, [])
+
+  const checkTutorialStatus = async () => {
+    try {
+      const completed = await AsyncStorage.getItem(TUTORIAL_COMPLETED_KEY)
+      if (!completed) {
+        setShowTutorial(true)
+      }
+    } catch (error) {
+      console.error('Failed to check tutorial status:', error)
+    } finally {
+      setCheckingTutorial(false)
+    }
+  }
+
+  const handleTutorialComplete = async () => {
+    try {
+      await AsyncStorage.setItem(TUTORIAL_COMPLETED_KEY, 'true')
+      setShowTutorial(false)
+    } catch (error) {
+      console.error('Failed to save tutorial status:', error)
+      setShowTutorial(false)
+    }
+  }
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -51,33 +84,44 @@ export default function WalletConnectScreen() {
     setError(null)
   }
 
+  if (checkingTutorial) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary[500]} />
+        </View>
+      </SafeAreaView>
+    )
+  }
+
+  if (showTutorial) {
+    return <Tutorial onComplete={handleTutorialComplete} />
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
         {/* Hero Section */}
         <View style={styles.hero}>
-          <View style={styles.iconContainer}>
-            <Ionicons name="trophy" size={80} color={colors.primary[500]} />
-          </View>
-          <Text style={styles.title}>Welcome to Stride</Text>
+          <Text style={styles.title}>STRIDE</Text>
           <Text style={styles.subtitle}>
-            Competitive on-chain fitness leagues where real-world activity builds reputation and unlocks rewards
+            On-chain fitness competition
           </Text>
         </View>
 
         {/* Features */}
         <View style={styles.features}>
           <View style={styles.feature}>
-            <Ionicons name="flash" size={24} color={colors.secondary[500]} />
-            <Text style={styles.featureText}>Track workouts & earn points</Text>
+            <View style={styles.featureDot} />
+            <Text style={styles.featureText}>Track performance</Text>
           </View>
           <View style={styles.feature}>
-            <Ionicons name="people" size={24} color={colors.accent[500]} />
-            <Text style={styles.featureText}>Join competitive leagues</Text>
+            <View style={styles.featureDot} />
+            <Text style={styles.featureText}>Compete globally</Text>
           </View>
           <View style={styles.feature}>
-            <Ionicons name="trophy" size={24} color={colors.gold[500]} />
-            <Text style={styles.featureText}>Dominate leaderboards</Text>
+            <View style={styles.featureDot} />
+            <Text style={styles.featureText}>Earn rewards</Text>
           </View>
         </View>
 
@@ -87,25 +131,21 @@ export default function WalletConnectScreen() {
             <AccountFeatureConnect onError={setError} />
             {error && (
               <Card variant="outlined" style={styles.errorCard}>
-                <Ionicons name="alert-circle" size={20} color={colors.error} />
                 <Text style={styles.errorText}>{error}</Text>
               </Card>
             )}
           </View>
         ) : (
           <View style={styles.authSection}>
-            <Card variant="glow" style={styles.walletCard}>
-              <View style={styles.walletHeader}>
-                <Ionicons name="checkmark-circle" size={32} color={colors.success} />
-                <Text style={styles.walletStatus}>Wallet Connected</Text>
-              </View>
+            <Card variant="elevated" style={styles.walletCard}>
+              <Text style={styles.walletLabel}>CONNECTED</Text>
               <Text style={styles.walletAddress} numberOfLines={1} ellipsizeMode="middle">
                 {account.address.toString()}
               </Text>
             </Card>
 
             <Button
-              title={authenticating ? 'Signing In...' : 'Sign In with Wallet'}
+              title={authenticating ? 'AUTHENTICATING' : 'AUTHENTICATE'}
               onPress={handleAuthenticate}
               disabled={authenticating}
               loading={authenticating}
@@ -115,7 +155,7 @@ export default function WalletConnectScreen() {
             />
 
             <Button
-              title="Switch Wallet"
+              title="DISCONNECT"
               onPress={handleDisconnect}
               variant="ghost"
               size="md"
@@ -124,7 +164,6 @@ export default function WalletConnectScreen() {
 
             {error && (
               <Card variant="outlined" style={styles.errorCard}>
-                <Ionicons name="alert-circle" size={20} color={colors.error} />
                 <Text style={styles.errorText}>{error}</Text>
               </Card>
             )}
@@ -149,33 +188,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.xxxl,
   },
-  iconContainer: {
-    marginBottom: spacing.lg,
-  },
   title: {
-    ...typography.display,
+    fontSize: 56,
+    fontWeight: '300',
+    letterSpacing: 8,
     color: colors.text.primary,
     textAlign: 'center',
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   subtitle: {
-    ...typography.body,
-    color: colors.text.secondary,
+    ...typography.bodySmall,
+    color: colors.text.tertiary,
     textAlign: 'center',
-    lineHeight: 24,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
   features: {
-    gap: spacing.md,
+    gap: spacing.lg,
     marginBottom: spacing.xxxl,
+    paddingHorizontal: spacing.xl,
   },
   feature: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
   },
+  featureDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.primary[500],
+  },
   featureText: {
-    ...typography.bodyLarge,
-    color: colors.text.primary,
+    ...typography.body,
+    color: colors.text.secondary,
+    letterSpacing: 0.5,
   },
   connectSection: {
     gap: spacing.md,
@@ -186,34 +233,32 @@ const styles = StyleSheet.create({
   walletCard: {
     alignItems: 'center',
   },
-  walletHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  walletStatus: {
-    ...typography.h4,
-    color: colors.text.primary,
+  walletLabel: {
+    ...typography.labelSmall,
+    color: colors.text.tertiary,
+    marginBottom: spacing.sm,
   },
   walletAddress: {
     ...typography.bodySmall,
-    color: colors.text.secondary,
+    color: colors.text.primary,
     fontFamily: 'monospace',
+    letterSpacing: 0.5,
   },
   button: {
     width: '100%',
   },
   errorCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
     backgroundColor: colors.background.secondary,
     borderColor: colors.error,
   },
   errorText: {
     ...typography.bodySmall,
     color: colors.error,
+    textAlign: 'center',
+  },
+  loadingContainer: {
     flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 })

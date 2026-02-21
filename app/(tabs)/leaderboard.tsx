@@ -145,9 +145,13 @@ export default function Leaderboard() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary[500]} />
         }
       >
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>RANKINGS</Text>
+        </View>
+
         {/* League Selector */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Leagues</Text>
+        <View style={styles.leagueSection}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.leagueScroll}>
             {leagues.map((league) => {
               const isSelected = selectedLeague?.id === league.id
@@ -156,24 +160,19 @@ export default function Leaderboard() {
               return (
                 <TouchableOpacity key={league.id} onPress={() => setSelectedLeague(league)}>
                   <Card
-                    variant={isSelected ? 'glow' : 'default'}
-                    style={isSelected ? { ...styles.leagueCard, ...styles.leagueCardActive } : styles.leagueCard}
+                    variant={isSelected ? 'elevated' : 'default'}
+                    style={[styles.leagueCard, isSelected && styles.leagueCardActive]}
                   >
-                    <View style={styles.leagueHeader}>
-                      <Text style={styles.leagueName}>{league.name}</Text>
-                      {isMember && <Badge label="JOINED" variant="success" size="sm" />}
-                    </View>
+                    <Text style={styles.leagueName}>{league.name}</Text>
                     <Text style={styles.leagueSeason}>{league.season}</Text>
                     <View style={styles.leagueFooter}>
-                      <View style={styles.memberCount}>
-                        <Ionicons name="people" size={14} color={colors.text.tertiary} />
-                        <Text style={styles.memberCountText}>{league.member_count}</Text>
-                      </View>
+                      <Text style={styles.memberCount}>{league.member_count}</Text>
+                      {isMember && <View style={styles.memberDot} />}
                     </View>
 
                     {account && (
                       <Button
-                        title={isMember ? 'Leave' : 'Join'}
+                        title={isMember ? 'LEAVE' : 'JOIN'}
                         variant={isMember ? 'outline' : 'primary'}
                         size="sm"
                         onPress={() => (isMember ? handleLeaveLeague(league.id) : handleJoinLeague(league.id))}
@@ -187,29 +186,23 @@ export default function Leaderboard() {
           </ScrollView>
         </View>
 
-        {/* User Rank Card */}
+        {/* User Rank */}
         {selectedLeague && account && getUserRank() && (
-          <Card variant="elevated" style={styles.userRankCard}>
-            <View style={styles.userRankContent}>
-              <View>
-                <Text style={styles.userRankLabel}>YOUR RANK</Text>
-                <Text style={styles.userRankValue}>#{getUserRank()}</Text>
-              </View>
-              <Ionicons name="trophy" size={48} color={colors.gold[500]} />
-            </View>
-          </Card>
+          <View style={styles.userRankSection}>
+            <Card variant="elevated" style={styles.userRankCard}>
+              <Text style={styles.userRankLabel}>YOUR RANK</Text>
+              <Text style={styles.userRankValue}>#{getUserRank()}</Text>
+            </Card>
+          </View>
         )}
 
         {/* Leaderboard */}
         {selectedLeague && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Top Competitors</Text>
+          <View style={styles.leaderboardSection}>
             {leaderboard.length === 0 ? (
-              <Card style={styles.emptyCard}>
-                <Ionicons name="trophy-outline" size={48} color={colors.text.tertiary} />
-                <Text style={styles.emptyText}>No competitors yet</Text>
-                <Text style={styles.emptySubtext}>Be the first to join and compete!</Text>
-              </Card>
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyText}>No competitors</Text>
+              </View>
             ) : (
               leaderboard.map((entry, index) => {
                 const isCurrentUser = account?.address.toString() === entry.wallet_address
@@ -217,40 +210,27 @@ export default function Leaderboard() {
                 return (
                   <Card
                     key={entry.wallet_address}
-                    variant={isCurrentUser ? 'glow' : 'default'}
-                    style={
-                      isCurrentUser
-                        ? { ...styles.leaderboardItem, ...styles.leaderboardItemHighlight }
-                        : styles.leaderboardItem
-                    }
+                    variant={isCurrentUser ? 'elevated' : 'default'}
+                    style={[styles.leaderboardItem, isCurrentUser && styles.leaderboardItemActive]}
                   >
-                    <View style={index < 3 ? { ...styles.rankBadge, ...styles.rankBadgeTop } : styles.rankBadge}>
-                      <Text style={styles.rankText}>{getRankIcon(index)}</Text>
+                    <View style={styles.rankContainer}>
+                      <Text style={styles.rankText}>{index + 1}</Text>
                     </View>
 
                     <View style={styles.leaderboardInfo}>
-                      <View style={styles.leaderboardHeader}>
-                        <Text style={styles.leaderboardName}>
-                          {entry.username}
-                          {isCurrentUser && ' (You)'}
-                        </Text>
-                        {index < 3 && <Badge label="TOP 3" variant="gold" size="sm" />}
-                      </View>
+                      <Text style={styles.leaderboardName}>
+                        {entry.username}
+                        {isCurrentUser && ' (YOU)'}
+                      </Text>
                       <View style={styles.leaderboardStats}>
-                        <View style={styles.stat}>
-                          <Ionicons name="fitness" size={14} color={colors.text.tertiary} />
-                          <Text style={styles.statText}>{entry.workout_count}</Text>
-                        </View>
-                        <View style={styles.stat}>
-                          <Ionicons name="trophy" size={14} color={colors.text.tertiary} />
-                          <Text style={styles.statText}>{entry.races_won}</Text>
-                        </View>
+                        <Text style={styles.statText}>{entry.workout_count} workouts</Text>
+                        <Text style={styles.statDivider}>·</Text>
+                        <Text style={styles.statText}>{entry.races_won} wins</Text>
                       </View>
                     </View>
 
                     <View style={styles.pointsContainer}>
                       <Text style={styles.pointsValue}>{entry.season_points}</Text>
-                      <Text style={styles.pointsLabel}>PTS</Text>
                     </View>
                   </Card>
                 )
@@ -271,133 +251,137 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
-  section: {
-    marginBottom: spacing.xl,
+  header: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.subtle,
   },
-  sectionTitle: {
+  headerTitle: {
     ...typography.h3,
     color: colors.text.primary,
-    marginBottom: spacing.md,
-    paddingHorizontal: spacing.md,
+    letterSpacing: 2,
+    fontWeight: '300',
   },
 
-  // League Cards
+  // League Section
+  leagueSection: {
+    paddingVertical: spacing.lg,
+  },
   leagueScroll: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.lg,
   },
   leagueCard: {
-    minWidth: 200,
+    minWidth: 180,
     marginRight: spacing.md,
+    paddingVertical: spacing.lg,
   },
   leagueCardActive: {
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: colors.primary[500],
-  },
-  leagueHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.xs,
   },
   leagueName: {
     ...typography.h4,
     color: colors.text.primary,
-    flex: 1,
+    marginBottom: spacing.xs,
+    letterSpacing: 1,
+    fontWeight: '400',
   },
   leagueSeason: {
-    ...typography.bodySmall,
-    color: colors.text.secondary,
-    marginBottom: spacing.sm,
+    ...typography.caption,
+    color: colors.text.tertiary,
+    marginBottom: spacing.md,
+    letterSpacing: 0.5,
   },
   leagueFooter: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: spacing.md,
   },
   memberCount: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  memberCountText: {
     ...typography.caption,
     color: colors.text.tertiary,
+  },
+  memberDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.primary[500],
   },
   leagueButton: {
     marginTop: spacing.sm,
   },
 
   // User Rank
-  userRankCard: {
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.lg,
+  userRankSection: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
   },
-  userRankContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  userRankCard: {
+    paddingVertical: spacing.xl,
     alignItems: 'center',
   },
   userRankLabel: {
     ...typography.labelSmall,
     color: colors.text.tertiary,
-    marginBottom: spacing.xs,
+    marginBottom: spacing.sm,
+    letterSpacing: 1.5,
   },
   userRankValue: {
     ...typography.display,
-    color: colors.gold[500],
+    color: colors.primary[500],
+    fontWeight: '300',
   },
 
-  // Leaderboard Items
+  // Leaderboard
+  leaderboardSection: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xxxl,
+  },
   leaderboardItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.md,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
   },
-  leaderboardItemHighlight: {
-    borderWidth: 2,
+  leaderboardItemActive: {
+    borderWidth: 1,
     borderColor: colors.primary[500],
   },
-  rankBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: borderRadius.full,
-    backgroundColor: surfaces.elevated2,
-    justifyContent: 'center',
+  rankContainer: {
+    width: 40,
     alignItems: 'center',
     marginRight: spacing.md,
   },
-  rankBadgeTop: {
-    backgroundColor: colors.gold[900],
-  },
   rankText: {
-    ...typography.h4,
-    color: colors.text.primary,
+    ...typography.h3,
+    color: colors.text.tertiary,
+    fontWeight: '300',
   },
   leaderboardInfo: {
     flex: 1,
   },
-  leaderboardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
-  },
   leaderboardName: {
     ...typography.h4,
     color: colors.text.primary,
+    marginBottom: spacing.xs,
+    letterSpacing: 0.5,
+    fontWeight: '400',
   },
   leaderboardStats: {
     flexDirection: 'row',
-    gap: spacing.md,
-  },
-  stat: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: spacing.sm,
   },
   statText: {
+    ...typography.caption,
+    color: colors.text.tertiary,
+    letterSpacing: 0.5,
+  },
+  statDivider: {
     ...typography.caption,
     color: colors.text.tertiary,
   },
@@ -406,28 +390,18 @@ const styles = StyleSheet.create({
   },
   pointsValue: {
     ...typography.h2,
-    color: colors.secondary[500],
-    fontWeight: '700',
-  },
-  pointsLabel: {
-    ...typography.labelSmall,
-    color: colors.text.tertiary,
+    color: colors.text.primary,
+    fontWeight: '300',
   },
 
   // Empty State
-  emptyCard: {
-    alignItems: 'center',
+  emptyState: {
     paddingVertical: spacing.xxxl,
-    marginHorizontal: spacing.md,
+    alignItems: 'center',
   },
   emptyText: {
-    ...typography.h4,
-    color: colors.text.secondary,
-    marginTop: spacing.md,
-  },
-  emptySubtext: {
-    ...typography.bodySmall,
+    ...typography.body,
     color: colors.text.tertiary,
-    marginTop: spacing.xs,
+    letterSpacing: 1,
   },
 })

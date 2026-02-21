@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Text, View, TextInput, Button, StyleSheet, Alert, ScrollView, TouchableOpacity } from 'react-native'
+import { Text, View, TextInput, StyleSheet, Alert, ScrollView, TouchableOpacity } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useMobileWallet } from '@wallet-ui/react-native-web3js'
@@ -9,19 +9,11 @@ import { useRouter } from 'expo-router'
 import { AccountFeatureGetBalance } from '@/features/account/account-feature-get-balance'
 import { NetworkUiSelect } from '@/features/network/network-ui-select'
 import { useNetwork } from '@/features/network/use-network'
+import { colors, spacing, typography } from '@/constants/theme'
+import { Ionicons } from '@expo/vector-icons'
+import { Card } from '@/components/ui/Card'
 
 const PROFILE_CACHE_KEY = 'cached_profile_'
-
-function ProfileSkeleton() {
-  return (
-    <View style={styles.profileCard}>
-      <View style={styles.skeleton} />
-      <View style={[styles.skeleton, { width: '60%' }]} />
-      <View style={styles.skeleton} />
-      <View style={[styles.skeleton, { width: '80%' }]} />
-    </View>
-  )
-}
 
 export default function Profile() {
   const { account, disconnect } = useMobileWallet()
@@ -35,13 +27,9 @@ export default function Profile() {
   const [username, setUsername] = useState('')
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
-  const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
   const [showNetworkSelect, setShowNetworkSelect] = useState(false)
-  const [showWorkouts, setShowWorkouts] = useState(false)
-  const [showRaces, setShowRaces] = useState(false)
-  const [showLeagues, setShowLeagues] = useState(false)
+  const [expandedSection, setExpandedSection] = useState<string | null>(null)
 
   useEffect(() => {
     if (account) {
@@ -56,7 +44,6 @@ export default function Profile() {
       setLoading(true)
       setError(null)
 
-      // Try to load from cache first
       const cacheKey = PROFILE_CACHE_KEY + account.address.toString()
       const cached = await AsyncStorage.getItem(cacheKey)
 
@@ -65,15 +52,12 @@ export default function Profile() {
         setLoading(false)
       }
 
-      // Then fetch from backend in background
       const data = await getProfile(account.address.toString())
 
       if (data) {
         setProfile(data)
-        // Update cache
         await AsyncStorage.setItem(cacheKey, JSON.stringify(data))
 
-        // Load workout history
         try {
           const workoutData = await getWorkoutHistory(account.address.toString())
           setWorkouts(workoutData)
@@ -81,7 +65,6 @@ export default function Profile() {
           console.error('Failed to load workouts:', err)
         }
 
-        // Load race history
         try {
           const raceData = await getRaceHistory(account.address.toString())
           setRaces(raceData.races || [])
@@ -96,17 +79,13 @@ export default function Profile() {
           console.error('Failed to load leagues:', err)
         }
       } else {
-        // No profile exists - this is normal for new users
         setProfile(null)
         if (cached) {
-          // Clear stale cache if backend says no profile
           await AsyncStorage.removeItem(cacheKey)
         }
       }
     } catch (err: any) {
       console.error('Failed to load profile:', err)
-      // Only show error for actual failures (network/server errors)
-      // Don't show error if we have cached data
       if (!profile) {
         setError('Failed to load profile')
       }
@@ -117,14 +96,13 @@ export default function Profile() {
 
   const handleCreateProfile = async () => {
     if (!username.trim()) {
-      setError('Username is required')
+      setError('Username required')
       return
     }
 
     try {
       setCreating(true)
       setError(null)
-      setSuccess(null)
 
       const newProfile = {
         wallet: account!.address.toString(),
@@ -133,7 +111,6 @@ export default function Profile() {
 
       await createProfile(newProfile)
 
-      // Update cache immediately
       const cacheKey = PROFILE_CACHE_KEY + account!.address.toString()
       const profileData = {
         wallet_address: newProfile.wallet,
@@ -142,7 +119,6 @@ export default function Profile() {
       await AsyncStorage.setItem(cacheKey, JSON.stringify(profileData))
 
       setProfile(profileData)
-      setSuccess('Profile created successfully!')
       setUsername('')
     } catch (err) {
       console.error('Failed to create profile:', err)
@@ -153,7 +129,7 @@ export default function Profile() {
   }
 
   const handleDeleteProfile = () => {
-    Alert.alert('Delete Profile', 'Are you sure you want to delete your profile? This action cannot be undone.', [
+    Alert.alert('Delete Profile', 'Confirm deletion?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -165,23 +141,15 @@ export default function Profile() {
 
   const confirmDeleteProfile = async () => {
     try {
-      setDeleting(true)
-      setError(null)
-      setSuccess(null)
-
       await deleteProfile(account!.address.toString())
 
-      // Clear cache
       const cacheKey = PROFILE_CACHE_KEY + account!.address.toString()
       await AsyncStorage.removeItem(cacheKey)
 
       setProfile(null)
-      setSuccess('Profile deleted successfully!')
     } catch (err) {
       console.error('Failed to delete profile:', err)
       setError('Failed to delete profile')
-    } finally {
-      setDeleting(false)
     }
   }
 
@@ -191,182 +159,224 @@ export default function Profile() {
     router.replace('/')
   }
 
+  const toggleSection = (section: string) => {
+    setExpandedSection(expandedSection === section ? null : section)
+  }
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container} edges={[]}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>PROFILE</Text>
+        </View>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Loading...</Text>
+        </View>
+      </SafeAreaView>
+    )
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={[]}>
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.title}>Profile</Text>
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>PROFILE</Text>
+        </View>
 
-        {loading ? (
-          <ProfileSkeleton />
-        ) : profile ? (
-          <View style={styles.profileCard}>
-            <Text style={styles.label}>Username:</Text>
-            <Text style={styles.value}>{profile.username}</Text>
-
-            <Text style={styles.label}>Total Points:</Text>
-            <Text style={styles.value}>{profile.total_points || 0} pts</Text>
-
-            <Text style={styles.label}>Wallet Address:</Text>
-            <Text style={styles.value} numberOfLines={1} ellipsizeMode="middle">
-              {profile.wallet_address}
-            </Text>
-
-            <Text style={styles.label}>Balance:</Text>
-            <AccountFeatureGetBalance address={account!.address} />
-
-            <Text style={styles.label}>Network:</Text>
-            <Text style={styles.value}>{selectedNetwork.label}</Text>
-            <Button
-              title={showNetworkSelect ? 'Hide Networks' : 'Switch Network'}
-              onPress={() => setShowNetworkSelect(!showNetworkSelect)}
-              color="#6b7280"
-            />
-
-            {showNetworkSelect && (
-              <View style={styles.networkSelect}>
-                <NetworkUiSelect
-                  networks={networks}
-                  selectedNetwork={selectedNetwork}
-                  setSelectedNetwork={(network) => {
-                    setSelectedNetwork(network)
-                    setShowNetworkSelect(false)
-                  }}
-                />
+        {profile ? (
+          <View style={styles.content}>
+            {/* Profile Info */}
+            <Card style={styles.profileCard}>
+              <View style={styles.profileRow}>
+                <Text style={styles.profileLabel}>USERNAME</Text>
+                <Text style={styles.profileValue}>{profile.username}</Text>
               </View>
-            )}
+              <View style={styles.profileDivider} />
+              <View style={styles.profileRow}>
+                <Text style={styles.profileLabel}>POINTS</Text>
+                <Text style={styles.profileValue}>{profile.total_points || 0}</Text>
+              </View>
+            </Card>
 
-            <View style={styles.workoutHistorySection}>
-              <TouchableOpacity onPress={() => setShowWorkouts(!showWorkouts)}>
-                <Text style={styles.workoutHistoryTitle}>
-                  Workout History ({workouts.length}) {showWorkouts ? '▼' : '▶'}
-                </Text>
+            {/* Wallet */}
+            <Card style={styles.section}>
+              <Text style={styles.sectionLabel}>WALLET</Text>
+              <Text style={styles.walletAddress} numberOfLines={1} ellipsizeMode="middle">
+                {profile.wallet_address}
+              </Text>
+              <View style={styles.balanceContainer}>
+                <AccountFeatureGetBalance address={account!.address} />
+              </View>
+            </Card>
+
+            {/* Network */}
+            <Card style={styles.section}>
+              <TouchableOpacity 
+                style={styles.sectionHeader}
+                onPress={() => setShowNetworkSelect(!showNetworkSelect)}
+              >
+                <Text style={styles.sectionLabel}>NETWORK</Text>
+                <Ionicons 
+                  name={showNetworkSelect ? "chevron-up" : "chevron-down"} 
+                  size={20} 
+                  color={colors.text.tertiary} 
+                />
               </TouchableOpacity>
-
-              {showWorkouts && workouts.length > 0 && (
-                <View style={styles.workoutList}>
-                  {workouts.map((workout) => (
-                    <View key={workout.id} style={styles.workoutItem}>
-                      <Text style={styles.workoutDate}>{new Date(workout.completed_at).toLocaleDateString()}</Text>
-                      <Text style={styles.workoutStats}>
-                        {Math.floor(workout.duration / 60)}min • {workout.distance}km • {workout.points}pts
-                      </Text>
-                    </View>
-                  ))}
+              <Text style={styles.networkValue}>{selectedNetwork.label}</Text>
+              
+              {showNetworkSelect && (
+                <View style={styles.networkSelect}>
+                  <NetworkUiSelect
+                    networks={networks}
+                    selectedNetwork={selectedNetwork}
+                    setSelectedNetwork={(network) => {
+                      setSelectedNetwork(network)
+                      setShowNetworkSelect(false)
+                    }}
+                  />
                 </View>
               )}
+            </Card>
 
-              {showWorkouts && workouts.length === 0 && (
-                <Text style={styles.noWorkouts}>No workouts yet. Start tracking!</Text>
-              )}
-            </View>
-
-            <View style={styles.raceHistorySection}>
-              <TouchableOpacity onPress={() => setShowRaces(!showRaces)}>
-                <Text style={styles.raceHistoryTitle}>
-                  Race History ({races.length}) {showRaces ? '▼' : '▶'}
-                </Text>
+            {/* Workouts */}
+            <Card style={styles.section}>
+              <TouchableOpacity 
+                style={styles.sectionHeader}
+                onPress={() => toggleSection('workouts')}
+              >
+                <Text style={styles.sectionLabel}>WORKOUTS ({workouts.length})</Text>
+                <Ionicons 
+                  name={expandedSection === 'workouts' ? "chevron-up" : "chevron-down"} 
+                  size={20} 
+                  color={colors.text.tertiary} 
+                />
               </TouchableOpacity>
 
-              {showRaces && races.length > 0 && (
-                <View style={styles.raceList}>
-                  {races.map((race) => (
-                    <View key={race.id} style={styles.raceItem}>
-                      <View style={styles.raceHeader}>
-                        <Text style={styles.raceCode}>#{race.race_code}</Text>
-                        <Text style={styles.raceDate}>{new Date(race.completed_at).toLocaleDateString()}</Text>
-                      </View>
-                      <Text style={styles.raceStats}>
-                        {race.target_distance}km • {race.total_participants} racers
-                      </Text>
-                      <View style={styles.raceResult}>
-                        <Text style={styles.racePosition}>
-                          {race.position === 1 ? '🥇' : race.position === 2 ? '🥈' : race.position === 3 ? '🥉' : `#${race.position}`}
+              {expandedSection === 'workouts' && (
+                <View style={styles.listContainer}>
+                  {workouts.length > 0 ? (
+                    workouts.map((workout) => (
+                      <View key={workout.id} style={styles.listItem}>
+                        <Text style={styles.listDate}>
+                          {new Date(workout.completed_at).toLocaleDateString()}
                         </Text>
-                        <Text style={styles.raceTime}>
-                          {race.finished && race.finish_time
-                            ? `${Math.floor(race.finish_time / 60000)}:${String(Math.floor((race.finish_time % 60000) / 1000)).padStart(2, '0')}`
-                            : `${race.distance}km (DNF)`}
+                        <Text style={styles.listStats}>
+                          {Math.floor(workout.duration / 60)}m · {workout.distance}km · {workout.points}pts
                         </Text>
                       </View>
-                    </View>
-                  ))}
+                    ))
+                  ) : (
+                    <Text style={styles.emptyText}>No workouts</Text>
+                  )}
                 </View>
               )}
+            </Card>
 
-              {showRaces && races.length === 0 && (
-                <Text style={styles.noRaces}>No races yet. Join a race!</Text>
-              )}
-            </View>
-
-            <View style={styles.leaguesSection}>
-              <TouchableOpacity onPress={() => setShowLeagues(!showLeagues)}>
-                <Text style={styles.leaguesTitle}>
-                  My Leagues ({leagues.length}) {showLeagues ? '▼' : '▶'}
-                </Text>
+            {/* Races */}
+            <Card style={styles.section}>
+              <TouchableOpacity 
+                style={styles.sectionHeader}
+                onPress={() => toggleSection('races')}
+              >
+                <Text style={styles.sectionLabel}>RACES ({races.length})</Text>
+                <Ionicons 
+                  name={expandedSection === 'races' ? "chevron-up" : "chevron-down"} 
+                  size={20} 
+                  color={colors.text.tertiary} 
+                />
               </TouchableOpacity>
 
-              {showLeagues && leagues.length > 0 && (
-                <View style={styles.leaguesList}>
-                  {leagues.map((league) => (
-                    <View key={league.id} style={styles.leagueItem}>
-                      <View style={styles.leagueInfo}>
+              {expandedSection === 'races' && (
+                <View style={styles.listContainer}>
+                  {races.length > 0 ? (
+                    races.map((race) => (
+                      <View key={race.id} style={styles.listItem}>
+                        <View style={styles.raceHeader}>
+                          <Text style={styles.raceCode}>#{race.race_code}</Text>
+                          <Text style={styles.racePosition}>#{race.position}</Text>
+                        </View>
+                        <Text style={styles.listStats}>
+                          {race.target_distance}km · {race.total_participants} racers
+                        </Text>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={styles.emptyText}>No races</Text>
+                  )}
+                </View>
+              )}
+            </Card>
+
+            {/* Leagues */}
+            <Card style={styles.section}>
+              <TouchableOpacity 
+                style={styles.sectionHeader}
+                onPress={() => toggleSection('leagues')}
+              >
+                <Text style={styles.sectionLabel}>LEAGUES ({leagues.length})</Text>
+                <Ionicons 
+                  name={expandedSection === 'leagues' ? "chevron-up" : "chevron-down"} 
+                  size={20} 
+                  color={colors.text.tertiary} 
+                />
+              </TouchableOpacity>
+
+              {expandedSection === 'leagues' && (
+                <View style={styles.listContainer}>
+                  {leagues.length > 0 ? (
+                    leagues.map((league) => (
+                      <View key={league.id} style={styles.listItem}>
                         <Text style={styles.leagueName}>{league.name}</Text>
-                        <Text style={styles.leagueSeason}>{league.season}</Text>
+                        <Text style={styles.listStats}>
+                          {league.season} · {league.season_points || 0}pts
+                        </Text>
                       </View>
-                      <View style={styles.leaguePoints}>
-                        <Text style={styles.leaguePointsValue}>{league.season_points || 0}</Text>
-                        <Text style={styles.leaguePointsLabel}>pts</Text>
-                      </View>
-                    </View>
-                  ))}
+                    ))
+                  ) : (
+                    <Text style={styles.emptyText}>No leagues</Text>
+                  )}
                 </View>
               )}
+            </Card>
 
-              {showLeagues && leagues.length === 0 && (
-                <Text style={styles.noLeagues}>No leagues joined. Check the Leaderboard tab!</Text>
-              )}
-            </View>
+            {/* Actions */}
+            <View style={styles.actions}>
+              <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteProfile}>
+                <Text style={styles.deleteButtonText}>DELETE PROFILE</Text>
+              </TouchableOpacity>
 
-            <View style={styles.deleteButton}>
-              <Button
-                title={deleting ? 'Deleting...' : 'Delete Profile'}
-                onPress={handleDeleteProfile}
-                color="#dc2626"
-                disabled={deleting}
-              />
+              <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
+                <Text style={styles.signOutButtonText}>SIGN OUT</Text>
+              </TouchableOpacity>
             </View>
           </View>
         ) : (
-          <View style={styles.createForm}>
-            <Text style={styles.subtitle}>Create Your Profile</Text>
+          <View style={styles.createContainer}>
+            <Card style={styles.createCard}>
+              <Text style={styles.createTitle}>CREATE PROFILE</Text>
+              
+              <TextInput
+                style={styles.input}
+                placeholder="Username"
+                placeholderTextColor={colors.text.tertiary}
+                value={username}
+                onChangeText={setUsername}
+                editable={!creating}
+              />
 
-            <TextInput
-              style={styles.input}
-              placeholder="Enter username"
-              value={username}
-              onChangeText={setUsername}
-              editable={!creating}
-            />
+              <TouchableOpacity 
+                style={[styles.createButton, creating && styles.buttonDisabled]} 
+                onPress={handleCreateProfile}
+                disabled={creating}
+              >
+                <Text style={styles.createButtonText}>{creating ? 'CREATING' : 'CREATE'}</Text>
+              </TouchableOpacity>
 
-            <Button
-              title={creating ? 'Creating...' : 'Create Profile'}
-              onPress={handleCreateProfile}
-              disabled={creating}
-            />
+              {error && <Text style={styles.errorText}>{error}</Text>}
+            </Card>
           </View>
         )}
-
-        {error && (
-          <View style={styles.errorContainer}>
-            <Text style={styles.error}>{error}</Text>
-            <Button title="Retry" onPress={loadProfile} color="#dc2626" />
-          </View>
-        )}
-        {success && <Text style={styles.success}>{success}</Text>}
-
-        <View style={styles.footer}>
-          <Button title="Sign Out" onPress={handleSignOut} color="#dc2626" />
-        </View>
       </ScrollView>
     </SafeAreaView>
   )
@@ -375,244 +385,222 @@ export default function Profile() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0a0a',
+    backgroundColor: colors.background.primary,
   },
   scrollView: {
     flex: 1,
   },
+  header: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.subtle,
+  },
+  headerTitle: {
+    ...typography.h3,
+    color: colors.text.primary,
+    letterSpacing: 2,
+    fontWeight: '300',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: spacing.xxxl,
+  },
+  loadingText: {
+    ...typography.body,
+    color: colors.text.tertiary,
+    letterSpacing: 1,
+  },
   content: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: '800',
-    marginBottom: 24,
-    textAlign: 'center',
-    color: '#ffffff',
-  },
-  subtitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 15,
-    textAlign: 'center',
-    color: '#ffffff',
+    padding: spacing.lg,
+    paddingBottom: spacing.xxxl,
   },
   profileCard: {
-    backgroundColor: '#1a1a1a',
-    padding: 20,
-    borderRadius: 16,
-    gap: 10,
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
+    marginBottom: spacing.lg,
+    paddingVertical: spacing.xl,
   },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#888888',
-    marginTop: 10,
-  },
-  value: {
-    fontSize: 16,
-    color: '#ffffff',
-  },
-  createForm: {
-    gap: 15,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
-    backgroundColor: '#1a1a1a',
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 16,
-    color: '#ffffff',
-  },
-  networkSelect: {
-    marginTop: 10,
-    padding: 10,
-    backgroundColor: '#1a1a1a',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
-  },
-  workoutHistorySection: {
-    marginTop: 20,
-  },
-  workoutHistoryTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#ffffff',
-    marginBottom: 10,
-  },
-  workoutList: {
-    gap: 8,
-  },
-  workoutItem: {
-    backgroundColor: '#0f0f0f',
-    padding: 12,
-    borderRadius: 12,
+  profileRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
   },
-  workoutDate: {
-    fontSize: 14,
-    color: '#888888',
-    fontWeight: '500',
+  profileDivider: {
+    height: 1,
+    backgroundColor: colors.border.subtle,
+    marginVertical: spacing.lg,
   },
-  workoutStats: {
-    fontSize: 14,
-    color: '#ffffff',
+  profileLabel: {
+    ...typography.labelSmall,
+    color: colors.text.tertiary,
+    letterSpacing: 1.5,
   },
-  noWorkouts: {
-    fontSize: 14,
-    color: '#666666',
-    fontStyle: 'italic',
-    textAlign: 'center',
-    paddingVertical: 10,
+  profileValue: {
+    ...typography.h3,
+    color: colors.text.primary,
+    fontWeight: '300',
   },
-  raceHistorySection: {
-    marginTop: 20,
+  section: {
+    marginBottom: spacing.lg,
   },
-  raceHistoryTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#ffffff',
-    marginBottom: 10,
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
   },
-  raceList: {
-    gap: 8,
+  sectionLabel: {
+    ...typography.labelSmall,
+    color: colors.text.tertiary,
+    letterSpacing: 1.5,
   },
-  raceItem: {
-    backgroundColor: '#0f0f0f',
-    padding: 12,
-    borderRadius: 12,
-    gap: 6,
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
+  walletAddress: {
+    ...typography.bodySmall,
+    color: colors.text.primary,
+    fontFamily: 'monospace',
+    letterSpacing: 0.5,
+    marginTop: spacing.sm,
+  },
+  balanceContainer: {
+    marginTop: spacing.md,
+  },
+  networkValue: {
+    ...typography.body,
+    color: colors.text.primary,
+    marginTop: spacing.sm,
+    letterSpacing: 0.5,
+  },
+  networkSelect: {
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.subtle,
+  },
+  listContainer: {
+    marginTop: spacing.md,
+    gap: spacing.sm,
+  },
+  listItem: {
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.subtle,
+  },
+  listDate: {
+    ...typography.bodySmall,
+    color: colors.text.secondary,
+    marginBottom: spacing.xs,
+    letterSpacing: 0.5,
+  },
+  listStats: {
+    ...typography.caption,
+    color: colors.text.tertiary,
+    letterSpacing: 0.5,
   },
   raceHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: spacing.xs,
   },
   raceCode: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#00d4ff',
-  },
-  raceDate: {
-    fontSize: 12,
-    color: '#888888',
-  },
-  raceStats: {
-    fontSize: 13,
-    color: '#888888',
-  },
-  raceResult: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 4,
+    ...typography.bodySmall,
+    color: colors.text.secondary,
+    letterSpacing: 1,
   },
   racePosition: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  raceTime: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#ffffff',
-  },
-  noRaces: {
-    fontSize: 14,
-    color: '#666666',
-    fontStyle: 'italic',
-    textAlign: 'center',
-    paddingVertical: 10,
-  },
-  leaguesSection: {
-    marginTop: 20,
-  },
-  leaguesTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#ffffff',
-    marginBottom: 10,
-  },
-  leaguesList: {
-    gap: 8,
-  },
-  leagueItem: {
-    backgroundColor: '#0f0f0f',
-    padding: 12,
-    borderRadius: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
-  },
-  leagueInfo: {
-    flex: 1,
+    ...typography.bodySmall,
+    color: colors.primary[500],
+    letterSpacing: 1,
   },
   leagueName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#ffffff',
-    marginBottom: 2,
+    ...typography.bodySmall,
+    color: colors.text.secondary,
+    marginBottom: spacing.xs,
+    letterSpacing: 0.5,
   },
-  leagueSeason: {
-    fontSize: 12,
-    color: '#888888',
-  },
-  leaguePoints: {
-    alignItems: 'flex-end',
-  },
-  leaguePointsValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#00ff88',
-  },
-  leaguePointsLabel: {
-    fontSize: 11,
-    color: '#888888',
-  },
-  noLeagues: {
-    fontSize: 14,
-    color: '#666666',
+  emptyText: {
+    ...typography.caption,
+    color: colors.text.tertiary,
     fontStyle: 'italic',
     textAlign: 'center',
-    paddingVertical: 10,
+    paddingVertical: spacing.lg,
+  },
+  actions: {
+    marginTop: spacing.lg,
+    gap: spacing.md,
   },
   deleteButton: {
-    marginTop: 20,
+    backgroundColor: colors.background.secondary,
+    paddingVertical: spacing.lg,
+    borderRadius: 4,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.error,
   },
-  skeleton: {
-    height: 20,
-    backgroundColor: '#2a2a2a',
-    borderRadius: 8,
-    marginVertical: 8,
+  deleteButtonText: {
+    ...typography.label,
+    color: colors.error,
+    letterSpacing: 2,
   },
-  errorContainer: {
-    marginTop: 10,
-    gap: 10,
+  signOutButton: {
+    backgroundColor: colors.background.secondary,
+    paddingVertical: spacing.lg,
+    borderRadius: 4,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border.default,
+  },
+  signOutButtonText: {
+    ...typography.label,
+    color: colors.text.tertiary,
+    letterSpacing: 2,
+  },
+  createContainer: {
+    padding: spacing.lg,
+    paddingTop: spacing.xxxl,
+  },
+  createCard: {
+    paddingVertical: spacing.xxxl,
+  },
+  createTitle: {
+    ...typography.h3,
+    color: colors.text.primary,
+    textAlign: 'center',
+    marginBottom: spacing.xl,
+    letterSpacing: 2,
+    fontWeight: '300',
+  },
+  input: {
+    backgroundColor: colors.background.secondary,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    borderRadius: 4,
+    padding: spacing.lg,
+    ...typography.body,
+    color: colors.text.primary,
+    marginBottom: spacing.lg,
+    letterSpacing: 0.5,
+  },
+  createButton: {
+    backgroundColor: colors.primary[500],
+    paddingVertical: spacing.lg,
+    borderRadius: 4,
     alignItems: 'center',
   },
-  error: {
-    color: '#ff4444',
-    textAlign: 'center',
+  createButtonText: {
+    ...typography.label,
+    color: colors.background.primary,
+    letterSpacing: 2,
   },
-  success: {
-    color: '#00ff88',
-    textAlign: 'center',
-    marginTop: 10,
+  buttonDisabled: {
+    opacity: 0.5,
   },
-  footer: {
-    marginTop: 20,
-    paddingTop: 20,
+  errorText: {
+    ...typography.caption,
+    color: colors.error,
+    textAlign: 'center',
+    marginTop: spacing.md,
   },
 })
