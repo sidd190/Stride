@@ -1,58 +1,58 @@
 import React from 'react'
-import { View, Text, StyleSheet, ScrollView } from 'react-native'
+import { View, Text, StyleSheet, ScrollView, Animated } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useMobileWallet } from '@wallet-ui/react-native-web3js'
 import { ellipsify } from '@/utils/ellipsify'
-import { Card } from '@/components/ui/Card'
-import { Badge } from '@/components/ui/Badge'
-import { colors, spacing, typography, surfaces } from '@/constants/theme'
-import { Ionicons } from '@expo/vector-icons'
+import { AnimatedCard } from '@/components/ui/AnimatedCard'
+import { colors, spacing, typography } from '@/constants/theme'
+import { useFadeIn } from '@/utils/animations'
 
 export default function Home() {
   const { account } = useMobileWallet()
+  const headerOpacity = useFadeIn(400)
 
   return (
     <SafeAreaView style={styles.container} edges={[]}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Header */}
-        <View style={styles.header}>
+        <Animated.View style={[styles.header, { opacity: headerOpacity }]}>
           <Text style={styles.headerTitle}>OVERVIEW</Text>
-        </View>
+        </Animated.View>
 
         {/* Wallet */}
         {account && (
           <View style={styles.walletSection}>
-            <Card style={styles.walletCard}>
+            <AnimatedCard style={styles.walletCard} delay={200}>
               <Text style={styles.walletLabel}>CONNECTED</Text>
               <Text style={styles.walletAddress}>{ellipsify(account.address.toString(), 12)}</Text>
-            </Card>
+            </AnimatedCard>
           </View>
         )}
 
         {/* Stats */}
         <View style={styles.statsContainer}>
           <View style={styles.statsRow}>
-            <Card style={styles.statCard}>
+            <AnimatedCard style={styles.statCard} delay={300} slideDirection="left">
               <Text style={styles.statLabel}>WINS</Text>
               <Text style={styles.statValue}>0</Text>
-            </Card>
+            </AnimatedCard>
             
-            <Card style={styles.statCard}>
+            <AnimatedCard style={styles.statCard} delay={350} slideDirection="right">
               <Text style={styles.statLabel}>POINTS</Text>
               <Text style={styles.statValue}>0</Text>
-            </Card>
+            </AnimatedCard>
           </View>
 
           <View style={styles.statsRow}>
-            <Card style={styles.statCard}>
+            <AnimatedCard style={styles.statCard} delay={400} slideDirection="left">
               <Text style={styles.statLabel}>WORKOUTS</Text>
               <Text style={styles.statValue}>0</Text>
-            </Card>
+            </AnimatedCard>
             
-            <Card style={styles.statCard}>
+            <AnimatedCard style={styles.statCard} delay={450} slideDirection="right">
               <Text style={styles.statLabel}>LEAGUES</Text>
               <Text style={styles.statValue}>0</Text>
-            </Card>
+            </AnimatedCard>
           </View>
         </View>
       </ScrollView>

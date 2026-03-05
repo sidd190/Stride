@@ -1,18 +1,43 @@
-import { Text, View, StyleSheet, ActivityIndicator } from 'react-native'
+import { Text, View, StyleSheet, ActivityIndicator, Animated, Dimensions, ScrollView } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { useMobileWallet } from '@wallet-ui/react-native-web3js'
 import { AccountFeatureConnect } from '@/features/account/account-feature-connect'
 import { useRouter } from 'expo-router'
 import { useAuth } from '@/hooks/useAuth'
-import { Button } from '@/components/ui/Button'
-import { Card } from '@/components/ui/Card'
+import { AnimatedButton } from '@/components/ui/AnimatedButton'
+import { AnimatedCard } from '@/components/ui/AnimatedCard'
 import { colors, spacing, typography } from '@/constants/theme'
 import { Ionicons } from '@expo/vector-icons'
 import { Tutorial } from '@/components/Tutorial'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { useFadeIn, useScale, usePulse } from '@/utils/animations'
+import * as Haptics from 'expo-haptics'
 
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window')
 const TUTORIAL_COMPLETED_KEY = 'tutorial_completed'
+const SLIDE_WIDTH = SCREEN_WIDTH - spacing.lg * 2
+
+const FEATURES = [
+  {
+    icon: 'fitness-outline',
+    title: 'Track Every Move',
+    description: 'GPS-powered workout tracking with real-time metrics',
+    color: colors.secondary[500],
+  },
+  {
+    icon: 'people-outline',
+    title: 'Compete Globally',
+    description: 'Race against athletes worldwide in real-time',
+    color: colors.accent[500],
+  },
+  {
+    icon: 'trophy-outline',
+    title: 'Earn Rewards',
+    description: 'On-chain achievements and NFT collectibles',
+    color: colors.gold[500],
+  },
+]
 
 export default function WalletConnectScreen() {
   const { account, disconnect } = useMobileWallet()
@@ -22,6 +47,37 @@ export default function WalletConnectScreen() {
   const [error, setError] = useState<string | null>(null)
   const [showTutorial, setShowTutorial] = useState(false)
   const [checkingTutorial, setCheckingTutorial] = useState(true)
+  const [currentSlide, setCurrentSlide] = useState(0)
+  const scrollViewRef = useRef<ScrollView>(null)
+
+  // Typing animation for title
+  const [displayedText, setDisplayedText] = useState('')
+  const fullText = 'STRIDE'
+
+  useEffect(() => {
+    let index = 0
+    const interval = setInterval(() => {
+      if (index <= fullText.length) {
+        setDisplayedText(fullText.slice(0, index))
+        index++
+      } else {
+        clearInterval(interval)
+      }
+    }, 150)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Auto-scroll carousel
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentSlide((prev) => {
+        const next = (prev + 1) % FEATURES.length
+        scrollViewRef.current?.scrollTo({ x: SCREEN_WIDTH * next, animated: true })
+        return next
+      })
+    }, 4000)
+    return () => clearInterval(interval)
+  }, [])
 
   useEffect(() => {
     checkTutorialStatus()
@@ -63,15 +119,18 @@ export default function WalletConnectScreen() {
   }, [account])
 
   const handleAuthenticate = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
     try {
       setAuthenticating(true)
       setError(null)
       await signInWithWallet()
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
     } catch (err: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
       if (err.message?.includes('declined')) {
-        setError('You declined the sign-in request. Please try again.')
+        setError('Authentication declined')
       } else {
-        setError('Authentication failed. Please try again.')
+        setError('Authentication failed')
       }
       console.error(err)
     } finally {
@@ -80,9 +139,22 @@ export default function WalletConnectScreen() {
   }
 
   const handleDisconnect = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
     disconnect()
     setError(null)
   }
+
+  const handleScroll = (event: any) => {
+    const offsetX = event.nativeEvent.contentOffset.x
+    const index = Math.round(offsetX / SCREEN_WIDTH)
+    setCurrentSlide(index)
+  }
+
+  // Animations
+  const titleOpacity = useFadeIn(800)
+  const titleScale = useScale(800)
+  const subtitleOpacity = useFadeIn(1000, 400)
+  const connectedPulse = usePulse(!!account && !authenticating)
 
   if (checkingTutorial) {
     return (
@@ -100,76 +172,106 @@ export default function WalletConnectScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Hero Section */}
         <View style={styles.hero}>
-          <Text style={styles.title}>STRIDE</Text>
-          <Text style={styles.subtitle}>
-            On-chain fitness competition
-          </Text>
+          <Animated.Text style={[styles.title, { opacity: titleOpacity, transform: titleScale.transform }]}>
+            {displayedText}
+            <Animated.Text style={{ opacity: titleOpacity }}>_</Animated.Text>
+          </Animated.Text>
+          <Animated.Text style={[styles.subtitle, { opacity: subtitleOpacity }]}>
+            On-Chain Fitness Competition
+          </Animated.Text>
         </View>
 
-        {/* Features */}
-        <View style={styles.features}>
-          <View style={styles.feature}>
-            <View style={styles.featureDot} />
-            <Text style={styles.featureText}>Track performance</Text>
-          </View>
-          <View style={styles.feature}>
-            <View style={styles.featureDot} />
-            <Text style={styles.featureText}>Compete globally</Text>
-          </View>
-          <View style={styles.feature}>
-            <View style={styles.featureDot} />
-            <Text style={styles.featureText}>Earn rewards</Text>
+        {/* Carousel */}
+        <View style={styles.carouselContainer}>
+          <ScrollView
+            ref={scrollViewRef}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
+            style={styles.carousel}
+          >
+            {FEATURES.map((feature, index) => (
+              <View key={index} style={styles.slide}>
+                <AnimatedCard variant="elevated" style={styles.featureCard} delay={600 + index * 100}>
+                  <View style={[styles.iconCircle, { backgroundColor: `${feature.color}20` }]}>
+                    <Ionicons name={feature.icon as any} size={40} color={feature.color} />
+                  </View>
+                  <Text style={styles.featureTitle}>{feature.title}</Text>
+                  <Text style={styles.featureDescription}>{feature.description}</Text>
+                </AnimatedCard>
+              </View>
+            ))}
+          </ScrollView>
+
+          {/* Pagination Dots */}
+          <View style={styles.pagination}>
+            {FEATURES.map((_, index) => (
+              <View
+                key={index}
+                style={[styles.dot, index === currentSlide && styles.dotActive]}
+              />
+            ))}
           </View>
         </View>
 
         {/* Connection Section */}
-        {!account ? (
-          <View style={styles.connectSection}>
-            <AccountFeatureConnect onError={setError} />
-            {error && (
-              <Card variant="outlined" style={styles.errorCard}>
-                <Text style={styles.errorText}>{error}</Text>
-              </Card>
-            )}
-          </View>
-        ) : (
-          <View style={styles.authSection}>
-            <Card variant="elevated" style={styles.walletCard}>
-              <Text style={styles.walletLabel}>CONNECTED</Text>
-              <Text style={styles.walletAddress} numberOfLines={1} ellipsizeMode="middle">
-                {account.address.toString()}
-              </Text>
-            </Card>
+        <View style={styles.bottomSection}>
+          {!account ? (
+            <View style={styles.connectSection}>
+              <AccountFeatureConnect onError={setError} />
+              {error && (
+                <AnimatedCard variant="outlined" style={styles.errorCard} delay={100}>
+                  <Ionicons name="alert-circle-outline" size={20} color={colors.error} />
+                  <Text style={styles.errorText}>{error}</Text>
+                </AnimatedCard>
+              )}
+            </View>
+          ) : (
+            <View style={styles.authSection}>
+              <Animated.View style={connectedPulse}>
+                <AnimatedCard variant="glow" style={styles.walletCard} delay={100}>
+                  <Ionicons name="checkmark-circle" size={40} color={colors.success} />
+                  <Text style={styles.walletLabel}>WALLET CONNECTED</Text>
+                  <Text style={styles.walletAddress} numberOfLines={1} ellipsizeMode="middle">
+                    {account.address.toString()}
+                  </Text>
+                </AnimatedCard>
+              </Animated.View>
 
-            <Button
-              title={authenticating ? 'AUTHENTICATING' : 'AUTHENTICATE'}
-              onPress={handleAuthenticate}
-              disabled={authenticating}
-              loading={authenticating}
-              variant="primary"
-              size="lg"
-              style={styles.button}
-            />
+              <AnimatedButton
+                title={authenticating ? 'AUTHENTICATING...' : 'ENTER APP'}
+                onPress={handleAuthenticate}
+                disabled={authenticating}
+                variant="primary"
+                size="lg"
+              />
 
-            <Button
-              title="DISCONNECT"
-              onPress={handleDisconnect}
-              variant="ghost"
-              size="md"
-              style={styles.button}
-            />
+              <AnimatedButton
+                title="DISCONNECT"
+                onPress={handleDisconnect}
+                variant="ghost"
+                size="md"
+              />
 
-            {error && (
-              <Card variant="outlined" style={styles.errorCard}>
-                <Text style={styles.errorText}>{error}</Text>
-              </Card>
-            )}
-          </View>
-        )}
-      </View>
+              {error && (
+                <AnimatedCard variant="outlined" style={styles.errorCard} delay={100}>
+                  <Ionicons name="alert-circle-outline" size={20} color={colors.error} />
+                  <Text style={styles.errorText}>{error}</Text>
+                </AnimatedCard>
+              )}
+            </View>
+          )}
+        </View>
+      </ScrollView>
     </SafeAreaView>
   )
 }
@@ -179,50 +281,93 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background.primary,
   },
-  content: {
+  scrollView: {
     flex: 1,
-    paddingHorizontal: spacing.lg,
-    justifyContent: 'center',
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: spacing.xl,
   },
   hero: {
     alignItems: 'center',
-    marginBottom: spacing.xxxl,
+    paddingTop: spacing.xxl,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.xl,
   },
   title: {
     fontSize: 56,
-    fontWeight: '300',
-    letterSpacing: 8,
+    fontWeight: '200',
+    letterSpacing: 10,
     color: colors.text.primary,
     textAlign: 'center',
     marginBottom: spacing.sm,
+    fontFamily: 'monospace',
   },
   subtitle: {
     ...typography.bodySmall,
     color: colors.text.tertiary,
     textAlign: 'center',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
+    letterSpacing: 1.5,
   },
-  features: {
-    gap: spacing.lg,
-    marginBottom: spacing.xxxl,
-    paddingHorizontal: spacing.xl,
+  carouselContainer: {
+    marginVertical: spacing.xl,
   },
-  feature: {
-    flexDirection: 'row',
+  carousel: {
+    flexGrow: 0,
+  },
+  slide: {
+    width: SCREEN_WIDTH,
+    paddingHorizontal: spacing.lg,
+  },
+  featureCard: {
     alignItems: 'center',
-    gap: spacing.md,
+    paddingVertical: spacing.xxl,
+    paddingHorizontal: spacing.lg,
+    minHeight: 280,
+    justifyContent: 'center',
   },
-  featureDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
+  iconCircle: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  featureTitle: {
+    ...typography.h3,
+    color: colors.text.primary,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+    letterSpacing: 1,
+    fontWeight: '400',
+  },
+  featureDescription: {
+    ...typography.bodySmall,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    letterSpacing: 0.3,
+  },
+  pagination: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.border.default,
+  },
+  dotActive: {
+    width: 24,
     backgroundColor: colors.primary[500],
   },
-  featureText: {
-    ...typography.body,
-    color: colors.text.secondary,
-    letterSpacing: 0.5,
+  bottomSection: {
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.xl,
   },
   connectSection: {
     gap: spacing.md,
@@ -232,11 +377,13 @@ const styles = StyleSheet.create({
   },
   walletCard: {
     alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.xl,
   },
   walletLabel: {
     ...typography.labelSmall,
     color: colors.text.tertiary,
-    marginBottom: spacing.sm,
+    letterSpacing: 2,
   },
   walletAddress: {
     ...typography.bodySmall,
@@ -244,17 +391,18 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     letterSpacing: 0.5,
   },
-  button: {
-    width: '100%',
-  },
   errorCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     backgroundColor: colors.background.secondary,
     borderColor: colors.error,
+    padding: spacing.md,
   },
   errorText: {
     ...typography.bodySmall,
     color: colors.error,
-    textAlign: 'center',
+    flex: 1,
   },
   loadingContainer: {
     flex: 1,
