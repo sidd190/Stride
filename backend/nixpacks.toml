@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["nodejs_22"]
+nixPkgs = ["nodejs_22", "libuuid", "cairo", "pango", "pixman", "giflib", "libjpeg"]
 
 [phases.install]
 cmds = ["npm ci"]
