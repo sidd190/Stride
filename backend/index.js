@@ -532,4 +532,8 @@ io.on('connection', (socket) => {
   })
 })
 
-httpServer.listen(3000, '0.0.0.0', () => console.log('Backend running on port 3000 (accessible from network)'))
+const PORT = process.env.PORT || 3000
+httpServer.listen(PORT, '0.0.0.0', () => {
+  console.log(`Backend running on port ${PORT}`)
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`)
+})
