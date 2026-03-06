@@ -1,6 +1,6 @@
 import { Platform } from 'react-native'
 
-const BASE_URL = 'http://192.168.1.8:3000'
+const BASE_URL = 'https://stride-8mcq.onrender.com'
 
 export async function verifyWallet(payload: any) {
   try {

@@ -1,6 +1,6 @@
 import { io, Socket } from 'socket.io-client'
 
-const SOCKET_URL = 'http://192.168.1.8:3000'
+const SOCKET_URL = 'https://stride-8mcq.onrender.com'
 
 class SocketService {
   private socket: Socket | null = null
