@@ -2,6 +2,12 @@
 
 A blockchain-powered fitness competition platform that transforms running into a competitive, social experience with real-time races and on-chain rewards.
 
+## Links
+
+- [Demo Video](https://www.youtube.com/shorts/9QyG0W_rRcs)
+- [Website](https://sidd190.github.io/StrideWeb/)
+- [APK, PPT & Documentation](https://drive.google.com/drive/u/0/folders/1l5QtKJ01m0KGp4lCjYujvd9OeFGRENZS)
+
 ## The Problem
 
 Traditional fitness apps lack competitive engagement and fail to provide meaningful rewards for athletic achievements. Runners train alone, progress goes unrecognized, and there's no transparent way to verify accomplishments or compete globally in real-time.
@@ -15,6 +21,21 @@ Stride combines GPS workout tracking with blockchain technology to create a comp
 - Join seasonal leagues and climb global leaderboards
 - Participate in team relay races with coordinated baton passing
 - Track detailed workout metrics with GPS precision
+
+## Screenshots
+
+<p align="center">
+  <img src="assets/images/1.jpeg" width="200" alt="Welcome Screen"/>
+  <img src="assets/images/2.jpeg" width="200" alt="Race Creation"/>
+  <img src="assets/images/4.jpeg" width="200" alt="Live Race"/>
+  <img src="assets/images/6.jpeg" width="200" alt="Race Results"/>
+</p>
+
+<p align="center">
+  <img src="assets/images/7.jpeg" width="200" alt="Leaderboard"/>
+  <img src="assets/images/8.jpeg" width="200" alt="Profile"/>
+  <img src="assets/images/9.jpeg" width="200" alt="NFT Achievements"/>
+</p>
 
 ## Key Features
 
